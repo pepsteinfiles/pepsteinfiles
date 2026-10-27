@@ -109,7 +109,7 @@ main{padding-block:28px 72px;display:grid;gap:56px;position:relative;z-index:2}
 .dot.y{background:var(--yes)} .dot.n{background:var(--no)}
 
 /* vote buttons: equal weight, neutral until picked */
-.vote-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+.vote-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:18px}
 .vbtn{position:relative;border:1.5px solid var(--line);background:var(--surface-2);color:var(--ink);border-radius:14px;padding:15px 16px;text-align:left;display:flex;flex-direction:column;gap:3px;font-weight:700;font-size:17px;line-height:1.2;transition:border-color .15s,background .15s,transform .08s}
 .vbtn .lab{display:flex;align-items:center;gap:9px}
 .vbtn .lab::after{content:"→";margin-left:auto;font-weight:500;opacity:.45;transition:transform .15s,opacity .15s}
@@ -206,14 +206,12 @@ main{padding-block:28px 72px;display:grid;gap:56px;position:relative;z-index:2}
 .feed li.new{animation:flash 1.6s var(--ease)}
 @keyframes flash{from{background:color-mix(in srgb,var(--mark) 22%,transparent)}to{background:transparent}}
 
-.howrow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--line)}
-.howrow div{padding:18px 18px 4px 0;display:grid;gap:6px;align-content:start}
-.howrow div+div{padding-left:18px;border-left:1px solid var(--line)}
-.howrow b{font-family:var(--f-display);font-size:34px;font-weight:900;line-height:1;color:var(--mark)}
-:root:not([data-theme="dark"]) .howrow b{color:var(--ink)}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .howrow b{color:var(--mark)}}
-.howrow span{font-size:14px;color:var(--muted)}
-.howrow strong{color:var(--ink);font-weight:600;display:block}
+/* how we count: one rule, said once */
+.rule{border-top:1px solid var(--line);padding-top:22px;display:grid;gap:14px}
+.rule b{font-family:var(--f-display);font-weight:900;font-size:clamp(40px,6vw,72px);line-height:.9;text-transform:uppercase;white-space:nowrap}
+.rule b em{font-style:normal;display:inline-block;background:var(--mark);color:var(--mark-ink);padding:0 .12em}
+.rule p{margin:0;font-size:17px;color:var(--muted);max-width:46ch}
+.rule p strong{color:var(--ink);font-weight:600}
 
 /* headline market (Markets view) */
 .hero{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:clamp(22px,4vw,44px);display:grid;gap:30px}
@@ -392,10 +390,17 @@ footer .wordmark .lb{font-family:var(--f-mono);font-weight:500;font-size:clamp(1
 footer .wordmark .wd{display:flex;align-items:flex-start;font-family:var(--f-serif);font-style:italic;font-size:clamp(72px,15vw,210px);line-height:.84;letter-spacing:-.025em;padding-bottom:.1em;opacity:.12}
 footer .wordmark .ast-svg{width:.29em;height:.29em;margin:.01em 0 0 .05em}
 
+/* touch: no tap flash, no double-tap zoom delay, no hover states stuck after a tap */
+a,button,.card,label,input,select{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+@media (hover:none){
+  .card:hover{transform:none;box-shadow:none;border-color:var(--line)}
+  .vbtn.y:hover:not(.picked),.vbtn.n:hover:not(.picked){border-color:var(--line);background:var(--surface-2)}
+  .vbtn:hover .lab::after{transform:none;opacity:.45}
+  .btn:hover,.src a:hover{border-color:var(--line)}
+}
 @media (max-width:860px){
   .hero-body,.detail,.acct,.band,.docs,.sug{grid-template-columns:1fr}
-  .howrow{grid-template-columns:1fr 1fr}
-  .howrow div:nth-child(3){padding-left:0;border-left:0}
+  .rule{grid-template-columns:1fr}
   .paper{transform:none}
 }
 @media (max-width:520px){
@@ -404,27 +409,61 @@ footer .wordmark .ast-svg{width:.29em;height:.29em;margin:.01em 0 0 .05em}
   .strip .wrap{flex-wrap:nowrap}
   .strip .txt{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .strip .btn{padding:5px 10px}
-  .nav{margin-left:0;width:100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
-  .nav a{white-space:nowrap;padding:6px 9px;font-size:13px}
+  /* header: logo + account button on one row, links scroll underneath; tucks away on scroll down */
+  .top{transition:transform .28s var(--ease)}
+  .top.tuck{transform:translateY(calc(-1 * var(--tuck,0px)))}
+  .top .wrap{position:relative;gap:6px;padding-block:10px 4px}
+  .nav{margin-left:-9px;width:calc(100% + 9px);flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-right:16px}
+  .nav::-webkit-scrollbar{display:none}
+  .nav a{white-space:nowrap;padding:9px 11px;font-size:14px}
   .nav a[data-go="newsletter"]{display:none}
-  .nav #acctLink{margin-left:auto}
+  .nav #acctLink{position:absolute;right:max(16px,env(safe-area-inset-right,0px));top:16px;padding:9px 16px}
   .logo .wd{font-size:31px}
   .logo .lb{font-size:9px}
+  .demo-bar .wrap>span{display:none}
+  .demo-bar strong::after{content:" Numbers are simulated.";font-weight:400}
+  /* 16px stops iPhones zooming in on focus */
+  .field input,.field select,.field textarea,#cpy{font-size:16px}
+  .panel{padding:18px}
   .split{grid-template-columns:86px 1fr 40px}
+  .src a{flex-direction:column;gap:2px}
+  .stamp{font-size:13px;white-space:nowrap;padding:3px 8px 2px;letter-spacing:.1em}
+  /* vote buttons: keep labels on one line */
+  .vbtn .lab{white-space:nowrap}
+  .vbtn:not(.picked) .lab::after{display:none}
+  .vbtn small{font-size:12px}
   .lp{padding-top:8px;gap:18px}
   .lp .vote-row{grid-template-columns:1fr}
   .lp .vbtn{padding:16px 18px;font-size:19px}
-  .plate{min-width:0;flex:1 1 30%;padding:10px 14px 9px 11px}
-  .plate .yr{font-size:22px}
+  .lp .vbtn:not(.picked) .lab::after{display:inline}
+  .plate{min-width:0;flex:1 1 30%;padding:10px 12px 9px 11px}
+  .plate .yr{font-size:21px;white-space:nowrap}
   .plate .lbl{font-size:10.5px}
-  .plate .star{font-size:42px;top:-9px;right:-6px}
-  .howrow{grid-template-columns:1fr}
-  .howrow div+div{padding-left:0;border-left:0;border-top:1px solid var(--line)}
+  .plate .star{font-size:42px;top:-9px;right:-3px}
+  .plates{gap:8px;padding:0 6px 0 0;width:100%}
+  .tally-top{flex-wrap:nowrap}
+  .tally .big{font-size:60px}
+  .tally .of{text-align:left;font-size:13px;min-width:0}
+  .tally .of .sep{display:none}
+  .tally .of .left{display:block}
+  .rule{padding-top:16px}
+  .rule b{font-size:44px;white-space:normal}
+  .rule p{font-size:16px}
   .kpis b{font-size:24px}
+  /* modals become bottom sheets */
+  .scrim{align-items:flex-end;padding:0}
+  .modal{width:100%;border-radius:20px 20px 0 0;border-bottom:0;max-height:92%;padding:24px 18px calc(22px + env(safe-area-inset-bottom,0px));animation:sheet .32s var(--ease)}
+  @keyframes sheet{from{transform:translateY(40px);opacity:.4}}
   .confirm-bar{border-radius:14px;padding:10px 10px 10px 14px}
   .confirm-bar .t span{display:none}
   .card .pct{font-size:36px}
   .hero .vbtn{padding:14px 14px;font-size:17px}
+  .veil .vbtn{padding:9px 10px;font-size:13.5px}
+  .veil .vbtn .lab{gap:6px}
+}
+@media (max-width:360px){
+  .veil .vbtn{font-size:12.5px;padding:8px}
+  .veil .vbtn .lab{gap:5px}
   .hero{padding:20px 16px}
 }
 body:has(.confirm-bar) .toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
@@ -466,7 +505,7 @@ body:has(.confirm-bar) .toast{bottom:calc(96px + env(safe-area-inset-bottom,0px)
     <div class="wordmark" aria-hidden="true"><span class="lb">THE</span><span class="wd">Pepstein<svg class="ast-svg" viewBox="0 0 100 100" aria-hidden="true"><g fill="currentColor"><rect x="41" y="2" width="18" height="96" rx="2"/><rect x="41" y="2" width="18" height="96" rx="2" transform="rotate(60 50 50)"/><rect x="41" y="2" width="18" height="96" rx="2" transform="rotate(120 50 50)"/></g></svg></span><span class="lb">FILES</span></div>
     <div><strong style="color:var(--ink)">No money. No prizes. Nothing to buy.</strong> Markets here are public votes. Nobody stakes or wins anything.</div>
     <div>Every “Read the files” link goes to an official document from the Premier League, the club, UEFA or CAS. Polymarket odds appear separately, labelled as outside market data. Not affiliated with the Premier League, Manchester City FC or Polymarket.</div>
-    <div>We store your email, first name, country, club, your votes, any market suggestions you send and any optional fan-profile answers. Results are shown in aggregate. Your name is shown only if you choose to be listed as a signer or credited on a market. Newsletter only if you opt in. Unsubscribe, mute alerts, or clear your fan-profile answers any time from your account.</div>
+    <div>We store your email, first and last name, country, club, your votes, any market suggestions you send and any optional fan-profile answers. Results are shown in aggregate. Your first name and last initial are shown only if you choose to be listed as a signer; your first name only if you're credited on a market. Your full last name is never shown. Newsletter only if you opt in. Unsubscribe, mute alerts, or clear your fan-profile answers any time from your account.</div>
   </div>
 </footer>
 
@@ -1119,7 +1158,7 @@ async function renderPetition(v){
       <p class="plates-cap">${esc(RECORD.caption)} <a href="${SOURCES[RECORD.src].u}" target="_blank" rel="noopener">Source ↗</a></p>
     </div>
     <div class="tally rise" style="--d:4">
-      <div class="tally-top"><div class="big" id="petCount">${fmt(anim?0:t.yes)}</div><div class="of"><b>signatures</b><br>Goal ${fmt(PETITION.goal)} · ${left? fmt(left)+" to go" : "reached"}</div></div>
+      <div class="tally-top"><div class="big" id="petCount">${fmt(anim?0:t.yes)}</div><div class="of"><b>signatures</b><br>Goal ${fmt(PETITION.goal)}<span class="sep"> · </span><span class="left">${left? fmt(left)+" to go" : "reached"}</span></div></div>
       <div class="goal" role="progressbar" aria-valuemin="0" aria-valuemax="${PETITION.goal}" aria-valuenow="${t.yes}" aria-label="Signatures toward goal"><span id="petBar" style="width:${anim?0:pctGoal}%"></span>${[20,40,60,80].map(x=>`<i style="left:${x}%"></i>`).join("")}</div>
       <div class="ticks" aria-hidden="true">${[0,1,2,3,4,5].map(i=>`<span>${tick(i*k)}</span>`).join("")}</div>
     </div>
@@ -1145,19 +1184,17 @@ async function renderPetition(v){
       <div class="side">
         <div><h3>Share it</h3><p class="fine" style="margin:0 0 12px">Every share is worth more than a signature. Send it to the group chat.</p>${shareButtons()}</div>
         <div><h3>Recent signers</h3><ul class="feed" id="feed"><li class="empty">Loading…</li></ul>
-          <p class="fine" style="margin:10px 0 0">Only people who chose to be listed appear here: first name, country and club.</p></div>
+          <p class="fine" style="margin:10px 0 0">Only people who chose to be listed appear here: first name, last initial, country and club.</p></div>
         <div><h3>Read the files</h3><ul class="src">${["decision","plStatement","referral"].map(k=>SOURCES[k]).map(s=>`<li><a href="${s.u}" target="_blank" rel="noopener"><span>${esc(s.t)}</span><span class="k">${esc(s.k)}</span></a></li>`).join("")}</ul></div>
       </div>
     </div>
   </section>
 
   <section aria-labelledby="hc">
-    <div class="sec-head"><div><div class="eyebrow">No bots. No imports.</div><h2 id="hc">How we count</h2></div></div>
-    <div class="howrow">
-      <div><b>01</b><span><strong>One per email</strong>You confirm by clicking a link we email you.</span></div>
-      <div><b>02</b><span><strong>One side only</strong>The petition and counter-petition are the same vote. Switch any time. Every switch is logged.</span></div>
-      <div><b>03</b><span><strong>Live totals</strong>Nothing bought, imported or added by hand.</span></div>
-      <div><b>04</b><span><strong>Sent to the league</strong>When the sanctions are announced, we publish an open letter and send it to the Premier League Board with both totals and the club split. Final totals follow after the appeal.</span></div>
+    <div class="sec-head"><div><h2 id="hc">How we count</h2></div></div>
+    <div class="rule">
+      <b>One vote <em>per person</em></b>
+      <p><strong>This is not a prediction market,</strong> where one person gets as much influence as they're willing to pay for. Here, every fan counts the same.</p>
     </div>
   </section>
 
@@ -1209,7 +1246,7 @@ async function renderMe(v){
       </section>
       <section class="panel"><h2>Emails</h2>
         <div class="toggle"><label for="nlT"><strong>The Pepstein Files newsletter</strong><br><span class="fine">Short explainers when new files drop, plus members-only splits.</span></label><input type="checkbox" class="sw" id="nlT" ${u.newsletter?"checked":""}></div>
-        <div class="toggle"><label for="feedT"><strong>List me as a petition signer</strong><br><span class="fine">First name, country and club in the recent signers list.</span></label><input type="checkbox" class="sw" id="feedT" ${u.show_in_feed?"checked":""}></div>
+        <div class="toggle"><label for="feedT"><strong>List me as a petition signer</strong><br><span class="fine">First name, last initial, country and club in the recent signers list.</span></label><input type="checkbox" class="sw" id="feedT" ${u.show_in_feed?"checked":""}></div>
         <div class="toggle"><span><strong>Market alerts</strong><br><span class="fine">For markets you voted on: settled, big swings, related documents. Mute any market below.</span></span></div>
       </section>
     </div>
@@ -1523,6 +1560,20 @@ function doneModal(m,side){
   $("#shareIt")?.addEventListener("click",()=>copy(`${CONFIG.SITE_URL}/#${m.id}`));
 }
 function maybeOfferNewsletter(m,side){ if(store.get("pf_nl_offered",false)) return; store.set("pf_nl_offered",true); doneModal(m,side); }
+
+/* Mobile: tuck the header away while scrolling down, bring it back on any scroll up. */
+(function tuckHeader(){
+  const top=$(".top"), mq=matchMedia("(max-width:520px)"); let lastY=scrollY, ticking=false;
+  const measure=()=>top.style.setProperty("--tuck",(top.offsetHeight+2)+"px");
+  const onScroll=()=>{ ticking=false; const y=scrollY, d=y-lastY;
+    if(!mq.matches || y<120 || $("#modalRoot").innerHTML){ top.classList.remove("tuck"); lastY=y; return; }
+    if(Math.abs(d)<6) return;
+    if(d>0){ measure(); top.classList.add("tuck"); } else top.classList.remove("tuck");
+    lastY=y; };
+  addEventListener("scroll",()=>{ if(!ticking){ ticking=true; requestAnimationFrame(onScroll); } },{passive:true});
+  addEventListener("hashchange",()=>top.classList.remove("tuck"));
+  top.addEventListener("focusin",()=>top.classList.remove("tuck"));
+})();
 
 /* ------------------------------------------------------------
    Analytics (PostHog, EU cloud)
