@@ -657,6 +657,7 @@ const FAN_QUESTIONS = [
    SETUP.md (marks the request approved and emails the submitter).
    ------------------------------------------------------------ */
 const SUGGEST = { maxPending: 3, qMax: 110, detailMax: 600 };
+const hasProfile = u => !!(u && u.first_name && u.last_name);
 
 /* ------------------------------------------------------------
    Helpers
@@ -725,7 +726,7 @@ const Demo = {
   async requestLink(email){ store.set("pf_demo_pending_email",email); return {ok:true}; },
   async openLink(){ // simulates the user clicking the magic link
     const email=store.get("pf_demo_pending_email",""); let u=store.get("pf_demo_user",null);
-    if(!u){ u={email, supporter_no: 18000+Math.floor(Math.random()*900), first_name:null, country:null, club:null, newsletter:false, joined:new Date().toISOString()}; store.set("pf_demo_user",u); }
+    if(!u){ u={email, supporter_no: 18000+Math.floor(Math.random()*900), first_name:null, last_name:null, country:null, club:null, newsletter:false, joined:new Date().toISOString()}; store.set("pf_demo_user",u); }
     return u;
   },
   async saveProfile(p){ const u={...store.get("pf_demo_user",{}),...p}; store.set("pf_demo_user",u); return u; },
@@ -742,9 +743,9 @@ const Demo = {
     const names=["Sam","Aoife","Jordan","Priya","Tom","Chidi","Ellie","Marcus","Niamh","Kwame","Lucy","Dan","Ingrid","Ravi"];
     const places=[["Ireland","Liverpool"],["United Kingdom","Arsenal"],["United States","Liverpool"],["Nigeria","Manchester United"],["United Kingdom","Tottenham Hotspur"],["Norway","Liverpool"],["United Kingdom","Chelsea"],["Kenya","Arsenal"],["Canada","Newcastle United"],["Australia",null]];
     const r=seedRand(String(Math.floor(Date.now()/6e5))); const out=[]; const u=store.get("pf_demo_user",null); const v=store.get("pf_demo_votes",{});
-    if(u && u.show_in_feed && v[PETITION.market]==="yes") out.push({first_name:u.first_name,country:u.country,club:u.club,signed_at:new Date().toISOString()});
+    if(u && u.show_in_feed && v[PETITION.market]==="yes") out.push({first_name:u.first_name+(u.last_name?" "+u.last_name[0].toUpperCase()+".":""),country:u.country,club:u.club,signed_at:new Date().toISOString()});
     const pool=names.slice(); for(let i=pool.length-1;i>0;i--){ const j=Math.floor(r()*(i+1)); [pool[i],pool[j]]=[pool[j],pool[i]]; }
-    let t=Date.now()-20e3; for(let i=0;i<10;i++){ t-= (30+r()*400)*1000; const pl=places[Math.floor(r()*places.length)]; out.push({first_name:pool[i],country:pl[0],club:pl[1],signed_at:new Date(t).toISOString()}); }
+    let t=Date.now()-20e3; for(let i=0;i<10;i++){ t-= (30+r()*400)*1000; const pl=places[Math.floor(r()*places.length)]; out.push({first_name:pool[i]+" "+"BCDHKLMNPRSTW"[Math.floor(r()*13)]+".",country:pl[0],club:pl[1],signed_at:new Date(t).toISOString()}); }
     return out;
   },
   async submitRequest(r){ const list=store.get("pf_demo_requests",[]); list.push({...r,id:"r"+Date.now(),status:"pending",created_at:new Date().toISOString()}); store.set("pf_demo_requests",list); return {ok:true}; },
@@ -836,7 +837,7 @@ const App = {
     this.syncAcct();
     S.votes = await api.myVotes();
     const pending = store.get("pf_pending",null);
-    if(!S.user.first_name){ openProfile(pending); return; }
+    if(!hasProfile(S.user)){ openProfile(pending); return; }
     if(pending){ await finishVote(pending); }
     else if(pendingPicks().length){ await flushPicks(); await castAndRefresh(null); }
     else if(store.get("pf_pending_suggest",null)){ await finishSuggest(); }
@@ -1332,7 +1333,7 @@ async function renderSuggest(v){
     if(S.user && reqs.filter(r=>r.status==="pending").length>=SUGGEST.maxPending){ err.textContent=`You have ${SUGGEST.maxPending} waiting already. We'll get to them.`; return; }
     store.set("pf_pending_suggest",{kind:x.kind, question:q, detail:x.detail.trim()||null, source_url:x.source_url||null, credit:x.credit});
     if(!S.user){ openEmail(null,{suggest:true}); return; }
-    if(!S.user.first_name){ openProfile(null); return; }
+    if(!hasProfile(S.user)){ openProfile(null); return; }
     await finishSuggest();
   });
 }
@@ -1380,7 +1381,7 @@ function askQuestion(q){ if(!q) return;
    ------------------------------------------------------------ */
 async function startVote(id,side){
   const m=byId[id]; if(m.status!=="open") return;
-  if(S.user && S.user.first_name){
+  if(hasProfile(S.user)){
     if(S.votes[id]===side){ toast("That's already your vote."); return; }
     const changed=!!S.votes[id];
     await castAndRefresh(id,side);
@@ -1402,13 +1403,13 @@ function confirmNow(id){
   const ids=pendingPicks(); if(!ids.length) return;
   const first = id && S.picks[id]? id : ids[ids.length-1];
   const pending={id:first, side:S.picks[first]}; store.set("pf_pending",pending);
-  if(S.user && !S.user.first_name){ openProfile(pending); return; }
+  if(S.user && !hasProfile(S.user)){ openProfile(pending); return; }
   openEmail(pending,{count:ids.length});
 }
 // Floating bar: how many picks are waiting to be counted.
 function confirmBar(){
   const r=$("#barRoot"); if(!r) return; const n=pendingPicks().length;
-  if(!n || (S.user&&S.user.first_name) || confirmBar.hidden){ r.innerHTML=""; return; }
+  if(!n || hasProfile(S.user) || confirmBar.hidden){ r.innerHTML=""; return; }
   r.innerHTML=`<div class="confirm-bar" role="region" aria-label="Uncounted votes"><div class="t"><b>${n} ${n===1?"pick isn't":"picks aren't"} counted yet.</b><span>Confirm your email once and every pick counts. No password.</span></div><button class="btn" type="button" id="cbGo">Make ${n===1?"it":"them"} count</button><button class="x" type="button" id="cbX" aria-label="Hide">×</button></div>`;
   $("#cbGo").addEventListener("click",()=>confirmNow());
   $("#cbX").addEventListener("click",()=>{ confirmBar.hidden=true; r.innerHTML=""; });
@@ -1479,18 +1480,22 @@ function openProfile(pending,editing){
     <form id="pf" style="display:grid;gap:12px" novalidate>
       <div class="field"><label for="cl">Club</label><select id="cl"><option value="">Choose…</option>${CLUBS.map(c=>`<option ${u.club===c?"selected":""}>${c}</option>`).join("")}</select></div>
       <div class="field"><label for="ct">Country</label><select id="ct"><option value="">Choose…</option>${COUNTRIES.map(c=>`<option ${(u.country||(!editing&&guessCountry()))===c?"selected":""}>${c}</option>`).join("")}</select></div>
-      <div class="field"><label for="fn">First name</label><input id="fn" autocomplete="given-name" value="${esc(u.first_name||"")}" required maxlength="40"></div>
-      <label class="check"><input type="checkbox" id="feedOpt" ${u.show_in_feed?"checked":""}><span>Show my first name, country and club in the petition's recent signers list.</span></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field"><label for="fn">First name</label><input id="fn" autocomplete="given-name" value="${esc(u.first_name||"")}" required maxlength="40"></div>
+        <div class="field"><label for="ln">Last name</label><input id="ln" autocomplete="family-name" value="${esc(u.last_name||"")}" required maxlength="60"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="feedOpt" ${u.show_in_feed?"checked":""}><span>Show my first name and last initial (e.g. “Sam K.”), country and club in the petition's recent signers list.</span></label>
       <div class="err" id="pfErr"></div>
       <button class="btn solid" type="submit">${pending?"Count my vote":"Save"}</button>
     </form>
-    <p class="fine">Your email is never shown. Your supporter number and club appear on the leaderboard. Your first name appears only if you tick the box.</p>`);
+    <p class="fine">Your email and full last name are never shown. Your supporter number and club appear on the leaderboard. Your first name and last initial appear only if you tick the box. Full names count toward verified signatures when the petition is delivered.</p>`);
   $("#pf").addEventListener("submit",async e=>{
-    e.preventDefault(); const fn=$("#fn").value.trim();
+    e.preventDefault(); const fn=$("#fn").value.trim(), ln=$("#ln").value.trim();
     if(!$("#cl").value){ $("#pfErr").textContent="Choose a club, or “No club” if you don't have one."; return; }
     if(!$("#ct").value){ $("#pfErr").textContent="Choose a country."; return; }
     if(!fn){ $("#pfErr").textContent="Add a first name."; return; }
-    const patch={first_name:fn,country:$("#ct").value,club:$("#cl").value,show_in_feed:$("#feedOpt").checked};
+    if(!ln){ $("#pfErr").textContent="Add a last name. Only your initial is ever shown."; return; }
+    const patch={first_name:fn,last_name:ln,country:$("#ct").value,club:$("#cl").value,show_in_feed:$("#feedOpt").checked};
     if(!editing && store.get("pf_nl_intent",false)){ patch.newsletter=true; if(api.mode==="live") patch.newsletter_at=new Date().toISOString(); }
     store.del("pf_nl_intent");
     try{ S.user=await api.saveProfile(patch); }catch(err){ $("#pfErr").textContent="Couldn't save. Try again."; return; }
@@ -1560,7 +1565,7 @@ const Track = {
     if(!keepScroll) Track.capture("$pageview",{view:document.body.dataset.view||""}); return r; };
   App.onSignedIn=async function(){ const was=!!S.user; const r=await _signed.apply(this,arguments);
     if(S.user){ if(!was) Track.capture("signed_in"); Track.identify(); } return r; };
-  const _sv=startVote; startVote=async function(id,side){ Track.capture("vote_picked",{...mk(id),side,signed_in:!!(S.user&&S.user.first_name)}); return _sv.apply(this,arguments); };
+  const _sv=startVote; startVote=async function(id,side){ Track.capture("vote_picked",{...mk(id),side,signed_in:hasProfile(S.user)}); return _sv.apply(this,arguments); };
   const _cr=castAndRefresh; castAndRefresh=async function(id,side){ const r=await _cr.apply(this,arguments); Track.capture("vote_counted",{...mk(id),side}); return r; };
   [Demo,Live].forEach(a=>{
     const _rl=a.requestLink; a.requestLink=async function(){ const r=await _rl.apply(this,arguments); Track.capture("email_submitted",{ok:!!(r&&r.ok)}); return r; };
