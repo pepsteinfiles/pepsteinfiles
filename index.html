@@ -189,6 +189,9 @@ main{padding-block:28px 72px;display:grid;gap:56px;position:relative;z-index:2}
 .lp .vbtn small{font-size:13.5px}
 .trust{display:flex;gap:8px 18px;flex-wrap:wrap;justify-content:center;font-size:13px;color:var(--muted)}
 .trust span::before{content:"✓ ";color:var(--ink)}
+/* vote buttons right under the ask, on every screen size */
+.lp .vote-row{order:1}.lp .trust{order:2}.lp .tally{order:3}.lp > .rise:has(.plates){order:4}
+@media (min-width:521px){.lp h1{max-width:15ch;font-size:clamp(52px,8.5vw,118px)}}
 
 /* section heads */
 .sec-head{display:flex;align-items:end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
@@ -211,6 +214,17 @@ main{padding-block:28px 72px;display:grid;gap:56px;position:relative;z-index:2}
 .side{display:grid;gap:28px;min-width:0}
 .side h3{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
 .share-row{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.cel{display:grid;place-items:center;min-height:96px}
+.cel-img{width:100%;max-height:240px;object-fit:contain;border-radius:14px;animation:celIn .55s cubic-bezier(.2,1.6,.4,1) both}
+.cel-stamp{font-family:var(--f-display);font-weight:900;font-size:44px;letter-spacing:.06em;text-transform:uppercase;color:#b8860b;border:4px solid currentColor;border-radius:8px;padding:6px 18px 2px;transform:rotate(-6deg);animation:celIn .55s cubic-bezier(.2,1.6,.4,1) both}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .cel-stamp{color:var(--mark)}}
+:root[data-theme="dark"] .cel-stamp{color:var(--mark)}
+@keyframes celIn{0%{opacity:0;transform:rotate(-6deg) scale(2.2)}100%{opacity:1;transform:rotate(-6deg) scale(1)}}
+.cel-img{animation-name:celImg}@keyframes celImg{0%{opacity:0;transform:scale(.85)}100%{opacity:1;transform:scale(1)}}
+#celN{display:inline-block;transition:color .3s}#celN.tick{animation:tick .45s var(--ease);color:var(--ink)}
+@keyframes tick{0%{transform:translateY(-.35em);opacity:0}100%{transform:none;opacity:1}}
+.cel-goal{position:relative}.cel-goal span{transition:width .9s var(--ease)}
+@media (prefers-reduced-motion:reduce){.cel-stamp,.cel-img,#celN.tick{animation:none}}
 .share-row .solid{grid-column:1/-1}
 .feed{display:grid;gap:0;margin:0;padding:0;list-style:none}
 .feed li{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:14px;align-items:baseline}
@@ -697,7 +711,9 @@ const FAN_QUESTIONS = [
    SETUP.md (marks the request approved and emails the submitter).
    ------------------------------------------------------------ */
 const SUGGEST = { maxPending: 3, qMax: 110, detailMax: 600 };
-const hasProfile = u => !!(u && u.first_name && u.last_name);
+const hasProfile = u => !!(u && u.club);   // optional extras (club/country/name); never needed to count a vote
+/* Celebration after a vote counts. Set img to a path (e.g. "/signed.png") to show your picture; empty = built-in stamp. */
+const CELEBRATE = { img:"", alt:"" };
 
 /* ------------------------------------------------------------
    Helpers
@@ -892,10 +908,10 @@ const App = {
     this.syncAcct();
     S.votes = await api.myVotes();
     const pending = store.get("pf_pending",null);
-    if(!hasProfile(S.user)){ openProfile(pending); return; }
+    if(store.get("pf_nl_intent",false)){ store.del("pf_nl_intent"); if(!S.user.newsletter){ try{ S.user=await api.setNewsletter(true); }catch(e){} } }
     if(pending){ await finishVote(pending); }
-    else if(pendingPicks().length){ await flushPicks(); await castAndRefresh(null); }
-    else if(store.get("pf_pending_suggest",null)){ await finishSuggest(); }
+    else if(pendingPicks().length){ await flushPicks(); await castAndRefresh(null); closeModal(); toast("Your picks are counted."); }
+    else if(store.get("pf_pending_suggest",null)){ if(!hasProfile(S.user)) openProfile(null); else await finishSuggest(); }
     else if(!silent){ closeModal(); App.route(); toast("You're signed in."); }
   },
   route(keepScroll){
@@ -1411,11 +1427,11 @@ function askQuestion(q){ if(!q) return;
 }
 
 /* ------------------------------------------------------------
-   Vote flow: tap side → email → (link) → profile → counted
+   Vote flow: tap side → email → code → counted → (optional club)
    ------------------------------------------------------------ */
 async function startVote(id,side){
   const m=byId[id]; if(m.status!=="open") return;
-  if(hasProfile(S.user)){
+  if(S.user){
     if(S.votes[id]===side){ toast("That's already your vote."); return; }
     const changed=!!S.votes[id];
     await castAndRefresh(id,side);
@@ -1437,13 +1453,13 @@ function confirmNow(id){
   const ids=pendingPicks(); if(!ids.length) return;
   const first = id && S.picks[id]? id : ids[ids.length-1];
   const pending={id:first, side:S.picks[first]}; store.set("pf_pending",pending);
-  if(S.user && !hasProfile(S.user)){ openProfile(pending); return; }
+  if(S.user){ finishVote(pending); return; }
   openEmail(pending,{count:ids.length});
 }
 // Floating bar: how many picks are waiting to be counted.
 function confirmBar(){
   const r=$("#barRoot"); if(!r) return; const n=pendingPicks().length;
-  if(!n || hasProfile(S.user) || confirmBar.hidden){ r.innerHTML=""; return; }
+  if(!n || S.user || confirmBar.hidden){ r.innerHTML=""; return; }
   r.innerHTML=`<div class="confirm-bar" role="region" aria-label="Uncounted votes"><div class="t"><b>${n} ${n===1?"pick isn't":"picks aren't"} counted yet.</b><span>Confirm your email once and every pick counts. No password.</span></div><button class="btn" type="button" id="cbGo">Make ${n===1?"it":"them"} count</button><button class="x" type="button" id="cbX" aria-label="Hide">×</button></div>`;
   $("#cbGo").addEventListener("click",()=>confirmNow());
   $("#cbX").addEventListener("click",()=>{ confirmBar.hidden=true; r.innerHTML=""; });
@@ -1539,53 +1555,59 @@ function sentModal(em,pending){
 function openProfile(pending,editing){
   const u=S.user||{};
   modal(`
-    <div class="eyebrow">${editing?"Your profile":"You're in"}</div>
-    <h2>${editing?"Edit profile":"Last bit"}</h2>
-    ${pickPill(pending)}
-    <p>${editing?"Your club and country power the splits.":"Who do you support? It's how we show the club-by-club and country splits, including yours."}</p>
+    <div class="eyebrow">${editing?"Your profile":"Optional · 10 seconds"}</div>
+    <h2>${editing?"Edit profile":"Add your club"}</h2>
+    <p>${editing?"Your club and country power the splits.":"See how fans of your club voted, and put your club on the board."}</p>
     <form id="pf" style="display:grid;gap:12px" novalidate>
       <div class="field"><label for="cl">Club</label><select id="cl"><option value="">Choose…</option>${CLUBS.map(c=>`<option ${u.club===c?"selected":""}>${c}</option>`).join("")}</select></div>
       <div class="field"><label for="ct">Country</label><select id="ct"><option value="">Choose…</option>${COUNTRIES.map(c=>`<option ${(u.country||(!editing&&guessCountry()))===c?"selected":""}>${c}</option>`).join("")}</select></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div class="field"><label for="fn">First name</label><input id="fn" autocomplete="given-name" value="${esc(u.first_name||"")}" required maxlength="40"></div>
-        <div class="field"><label for="ln">Last name</label><input id="ln" autocomplete="family-name" value="${esc(u.last_name||"")}" required maxlength="60"></div>
+      <label class="check"><input type="checkbox" id="feedOpt" ${u.show_in_feed?"checked":""}><span>List me in recent signers as first name and last initial (e.g. “Sam K.”).</span></label>
+      <div id="nameRow" style="display:${u.show_in_feed?"grid":"none"};grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field"><label for="fn">First name</label><input id="fn" autocomplete="given-name" value="${esc(u.first_name||"")}" maxlength="40"></div>
+        <div class="field"><label for="ln">Last name</label><input id="ln" autocomplete="family-name" value="${esc(u.last_name||"")}" maxlength="60"></div>
       </div>
-      <label class="check"><input type="checkbox" id="feedOpt" ${u.show_in_feed?"checked":""}><span>Show my first name and last initial (e.g. “Sam K.”), country and club in the petition's recent signers list.</span></label>
       <div class="err" id="pfErr"></div>
-      <button class="btn solid" type="submit">${pending?"Count my vote":"Save"}</button>
+      <button class="btn solid" type="submit">Save</button>
+      ${editing?"":`<button class="btn" type="button" data-x>Skip</button>`}
     </form>
-    <p class="fine">Your email and full last name are never shown. Your supporter number and club appear on the leaderboard. Your first name and last initial appear only if you tick the box. Full names count toward verified signatures when the petition is delivered.</p>`);
+    <p class="fine">Your email is never shown. Only your initial is ever shown from your last name.</p>`);
+  $("#feedOpt").addEventListener("change",e=>{ $("#nameRow").style.display=e.target.checked?"grid":"none"; });
   $("#pf").addEventListener("submit",async e=>{
-    e.preventDefault(); const fn=$("#fn").value.trim(), ln=$("#ln").value.trim();
+    e.preventDefault(); const fn=$("#fn").value.trim(), ln=$("#ln").value.trim(), feed=$("#feedOpt").checked;
     if(!$("#cl").value){ $("#pfErr").textContent="Choose a club, or “No club” if you don't have one."; return; }
     if(!$("#ct").value){ $("#pfErr").textContent="Choose a country."; return; }
-    if(!fn){ $("#pfErr").textContent="Add a first name."; return; }
-    if(!ln){ $("#pfErr").textContent="Add a last name. Only your initial is ever shown."; return; }
-    const patch={first_name:fn,last_name:ln,country:$("#ct").value,club:$("#cl").value,show_in_feed:$("#feedOpt").checked};
-    if(!editing && store.get("pf_nl_intent",false)){ patch.newsletter=true; if(api.mode==="live") patch.newsletter_at=new Date().toISOString(); }
-    store.del("pf_nl_intent");
+    if(feed && (!fn || !ln)){ $("#pfErr").textContent="Add your first and last name to be listed. Only your initial is shown."; return; }
+    const patch={country:$("#ct").value,club:$("#cl").value,show_in_feed:feed};
+    if(fn) patch.first_name=fn; if(ln) patch.last_name=ln;
     try{ S.user=await api.saveProfile(patch); }catch(err){ $("#pfErr").textContent="Couldn't save. Try again."; return; }
     App.syncAcct();
-    if(pending){ await finishVote(pending); }
-    else if(!editing && store.get("pf_pending_suggest",null)){ await finishSuggest(); }
-    else { closeModal(); toast(editing?"Profile saved.":"You're signed in."); App.route(); }
+    if(!editing && store.get("pf_pending_suggest",null)){ await finishSuggest(); }
+    else { closeModal(); App.route(true); toast(editing?"Profile saved.":`Saved. ${patch.club} is on the board.`); }
   });
 }
 function doneModal(m,side){
-  const t=S.tallies[m.id]; const p=pct(t); const agree= side==="yes"? p : 100-p;
-  const q = S.user.newsletter? nextQuestion() : null; // one ask per moment: newsletter first, then fan questions
+  const t=S.tallies[m.id]||{yes:0,no:0}; const p=pct(t); const agree= side==="yes"? p : 100-p;
+  const isPet = m.id===PETITION.market;
+  const mine = isPet ? (side==="yes"? t.yes : t.no) : tot(t);
+  const art = CELEBRATE.img ? `<img class="cel-img" src="${esc(CELEBRATE.img)}" alt="${esc(CELEBRATE.alt)}">` : `<div class="cel-stamp">${isPet? (side==="yes"?"Signed":"Counter-signed") : "Counted"}</div>`;
+  const nl = !S.user.newsletter;
   modal(`
-    <div class="eyebrow">Vote counted</div>
-    <h2>You're supporter ${supNo(S.user.supporter_no||0)}</h2>
+    <div class="cel">${art}</div>
+    <div class="eyebrow">${isPet? "It counts" : "Vote counted"}</div>
+    <h2>${isPet? `You're signature <span id="celN">${fmt(Math.max(0,mine-1))}</span>` : `You're voter <span id="celN">${fmt(Math.max(0,mine-1))}</span>`}</h2>
     ${pickPill({id:m.id,side})}
-    <p><strong style="color:var(--ink)">${agree}%</strong> of ${fmt(tot(t))} voters agree with you. You can change your vote any time. Every change is kept in the history.</p>
-    ${!S.user.newsletter? `<div class="inbox"><strong>Want the files explained when they drop?</strong><span class="fine">The Pepstein Files: short, occasional, plain English. Members get the club splits in every issue.</span><div><button class="btn solid" id="nlYes">Yes, send them</button></div></div>`
-      : q? `<div class="inbox">${questionBlock(q)}</div>` : `<p>You're on The Pepstein Files newsletter. We'll explain each new file when it drops.</p>`}
-    ${m.id===PETITION.market? `<div style="display:grid;gap:8px"><strong>Now get one friend to sign.</strong>${shareButtons()}</div><button class="btn" data-x>Done</button>`
-      : `<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" id="shareIt">Copy link to share</button><button class="btn" data-x>Back to markets</button></div>`}`);
+    ${isPet && side==="yes"? `<div class="goal cel-goal" aria-hidden="true"><span id="celBar" style="width:${Math.min(100,(mine-1)/PETITION.goal*100)}%"></span></div>
+      <p><strong style="color:var(--ink)">${fmt(Math.max(0,PETITION.goal-mine))}</strong> to go to ${fmt(PETITION.goal)}. ${agree}% of everyone who's voted is with you.</p>`
+      : `<p><strong style="color:var(--ink)">${agree}%</strong> of ${fmt(tot(t))} voters agree with you. You can change your vote any time.</p>`}
+    <div style="display:grid;gap:8px"><strong style="color:var(--ink)">${isPet&&side==="yes"? "Every signature you bring is one closer. Send it to one mate." : "Send it to someone who'd disagree."}</strong>${shareButtons()}</div>
+    ${!hasProfile(S.user)? `<button class="btn" type="button" id="addClub">See how your club voted</button>` : ""}
+    ${nl? `<button type="button" id="nlYes" class="fine" style="background:none;border:0;padding:0;text-decoration:underline;justify-self:center">Email me when new files drop</button>` : ""}
+    <button class="btn" data-x>Done</button>`);
   bindShare($("#modalRoot"));
-  if(q){ maybeNudge.shown=true; bindQuestion($("#modalRoot"),q); }
-  $("#nlYes")?.addEventListener("click",async()=>{ S.user=await api.setNewsletter(true); toast("Subscribed to The Pepstein Files."); closeModal(); App.route(true); });
+  // the number ticks over to theirs
+  const n=$("#celN"); if(n){ setTimeout(()=>{ n.textContent=fmt(mine); n.classList.add("tick"); const b=$("#celBar"); if(b) b.style.width=Math.min(100,mine/PETITION.goal*100)+"%"; },700); }
+  $("#addClub")?.addEventListener("click",()=>openProfile(null));
+  $("#nlYes")?.addEventListener("click",async e=>{ S.user=await api.setNewsletter(true); e.target.outerHTML=`<span class="fine" style="justify-self:center">You're on the list.</span>`; });
   $("#shareIt")?.addEventListener("click",()=>copy(`${CONFIG.SITE_URL}/#${m.id}`));
 }
 function maybeOfferNewsletter(m,side){ if(store.get("pf_nl_offered",false)) return; store.set("pf_nl_offered",true); doneModal(m,side); }
@@ -1657,7 +1679,7 @@ const Track = {
     if(!keepScroll) Track.capture("$pageview",{view:document.body.dataset.view||""}); return r; };
   App.onSignedIn=async function(){ const was=!!S.user; const r=await _signed.apply(this,arguments);
     if(S.user){ if(!was) Track.capture("signed_in"); Track.identify(); } return r; };
-  const _sv=startVote; startVote=async function(id,side){ Track.capture("vote_picked",{...mk(id),side,signed_in:hasProfile(S.user)}); return _sv.apply(this,arguments); };
+  const _sv=startVote; startVote=async function(id,side){ Track.capture("vote_picked",{...mk(id),side,signed_in:!!S.user}); return _sv.apply(this,arguments); };
   const _cr=castAndRefresh; castAndRefresh=async function(id,side){ const r=await _cr.apply(this,arguments); Track.capture("vote_counted",{...mk(id),side}); return r; };
   [Demo,Live].forEach(a=>{
     const _rl=a.requestLink; a.requestLink=async function(){ const r=await _rl.apply(this,arguments); Track.capture("email_submitted",{ok:!!(r&&r.ok)}); return r; };
