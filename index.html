@@ -818,9 +818,9 @@ const Live = {
   async splits(id){ if(!this.user) return []; const {data}=await this.sb.rpc("market_splits_v2",{p_market:id}); return (data||[]).map(r=>({club:r.club,yes:+r.yes,no:+r.no})); },
   async submitRequest(r){ const {error}=await this.sb.from("market_requests").insert({user_id:this.user.id,...r}); if(error) return {ok:false,error:/pending/i.test(error.message)?`You can have ${SUGGEST.maxPending} suggestions waiting at once.`:"Couldn't send it. Try again."}; return {ok:true}; },
   async myRequests(){ if(!this.user) return []; const {data}=await this.sb.from("market_requests").select("id,kind,question,status,created_at,market_id").eq("user_id",this.user.id).order("created_at",{ascending:false}); return data||[]; },
-  async requestLink(email){
+  async requestLink(email, captchaToken){
     const redirect = CONFIG.SITE_URL ? CONFIG.SITE_URL + "/" : location.origin + location.pathname;
-    const {error}=await this.sb.auth.signInWithOtp({email, options:{emailRedirectTo:redirect, shouldCreateUser:true}});
+    const {error}=await this.sb.auth.signInWithOtp({email, options:{emailRedirectTo:redirect, shouldCreateUser:true, captchaToken: captchaToken||undefined}});
     if(error) return {ok:false, error:error.message}; return {ok:true};
   },
   async openLink(){ return null; },
@@ -1471,6 +1471,19 @@ function closeModal(){ $("#modalRoot").innerHTML=""; }
 function bindClose(){ const s=$("#modalRoot .scrim"); s.addEventListener("click",e=>{ if(e.target===s||e.target.closest("[data-x]")) closeModal(); }); document.addEventListener("keydown",function k(e){ if(e.key==="Escape"){ closeModal(); document.removeEventListener("keydown",k);} }); }
 function pickPill(p){ if(!p) return ""; const m=byId[p.id]; return `<div class="pick ${p.side==="yes"?"y":"n"}">${p.side==="yes"?"✓":"✕"} ${esc(p.side==="yes"?yesLabel(m):noLabel(m))}<span class="fine" style="margin-left:auto;color:inherit;opacity:.8">${esc(m.short||m.q)}</span></div>`; }
 
+/* Bot check (Cloudflare Turnstile). Supabase verifies the token server-side. */
+const TURNSTILE = { siteKey:"0x4AAAAAAFpFd86HAa24MPma", src:"https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" };
+const Captcha = { token:null, id:null,
+  async mount(el){
+    this.token=null; this.id=null;
+    if(api.mode!=="live" || !el) return;
+    try{ if(!window.turnstile) await loadScript(TURNSTILE.src); }catch(e){ console.warn("Turnstile failed to load", e); return; }
+    this.id = window.turnstile.render(el,{ sitekey:TURNSTILE.siteKey, size:"flexible",
+      callback:t=>{ this.token=t; const e=$("#emErr"); if(e && /human/.test(e.textContent)) e.textContent=""; },
+      "expired-callback":()=>{ this.token=null; }, "error-callback":()=>{ this.token=null; } });
+  },
+  reset(){ this.token=null; try{ if(this.id!=null) window.turnstile.reset(this.id); }catch(e){} }
+};
 function openEmail(pending,opts={}){
   modal(`
     <div class="eyebrow">${pending?"One step to count it":opts.suggest?"One step to send it":"Sign in"}</div>
@@ -1479,18 +1492,22 @@ function openEmail(pending,opts={}){
     <p>We'll email you a 6-digit code. No password. ${pending?"Your vote counts once you enter it. One counted vote per email, so the totals stay honest.":opts.suggest?"Your suggestion is sent once you enter it, and we'll email you if it goes live.":""}</p>
     <form id="emailForm" class="field" novalidate>
       <label for="em">Email</label>
-      <input id="em" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required>
+      <input id="em" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required value="${esc(opts.email||"")}">
       <label class="check" style="margin-top:8px"><input type="checkbox" id="nlOpt" ${opts.newsletter?"checked":""}><span>Also send me <strong>The Pepstein Files</strong> newsletter: short explainers when new files drop.</span></label>
+      <div id="capBox" style="margin-top:10px"></div>
       <div class="err" id="emErr"></div>
       <button class="btn solid" type="submit">Email me a code</button>
     </form>
     <p class="fine">One vote per email per market. Market alerts for markets you vote on. Mute any time.</p>`);
+  Captcha.mount($("#capBox"));
   $("#emailForm").addEventListener("submit",async e=>{
     e.preventDefault(); const em=$("#em").value.trim(); const nl=$("#nlOpt").checked;
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)){ $("#emErr").textContent="Enter a full email address, like name@example.com."; return; }
+    if(api.mode==="live" && !Captcha.token){ $("#emErr").textContent="Just checking you're human. Give it a second, then tap again."; return; }
     store.set("pf_nl_intent",nl);
-    const r=await api.requestLink(em);
-    if(!r.ok){ $("#emErr").textContent = r.error || "Couldn't send the link. Try again in a minute."; return; }
+    const btn=e.target.querySelector("button[type=submit]"); btn.disabled=true;
+    const r=await api.requestLink(em, Captcha.token); btn.disabled=false;
+    if(!r.ok){ Captcha.reset(); $("#emErr").textContent = /captcha/i.test(r.error||"") ? "The human check failed. Try again." : (r.error || "Couldn't send the code. Try again in a minute."); return; }
     sentModal(em,pending);
   });
 }
@@ -1517,8 +1534,7 @@ function sentModal(em,pending){
     if(r.demo) App.onSignedIn();
     // live: the auth listener picks up the new session and finishes the vote
   });
-  $("#resend")?.addEventListener("click",async e=>{ e.preventDefault(); const r=await api.requestLink(em);
-    $("#otpErr").textContent = r.ok ? "New code sent. Use the newest email." : (r.error||"Couldn't send. Try again in a minute."); });
+  $("#resend")?.addEventListener("click",e=>{ e.preventDefault(); openEmail(pending,{email:em}); });
 }
 function openProfile(pending,editing){
   const u=S.user||{};
