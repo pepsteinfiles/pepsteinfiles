@@ -764,6 +764,7 @@ const Demo = {
     return Object.keys(lean).map(c=>{ const n=Math.round(300+r()*2200); const y=Math.min(.98,Math.max(.02,base+lean[c]+(r()-.5)*.08)); return {club:c,yes:Math.round(n*y),no:n-Math.round(n*y)}; }).sort((a,b)=>(b.yes+b.no)-(a.yes+a.no));
   },
   async requestLink(email){ store.set("pf_demo_pending_email",email); return {ok:true}; },
+  async verifyCode(email,code){ await this.openLink(); return {ok:true, demo:true}; },
   async openLink(){ // simulates the user clicking the magic link
     const email=store.get("pf_demo_pending_email",""); let u=store.get("pf_demo_user",null);
     if(!u){ u={email, supporter_no: 18000+Math.floor(Math.random()*900), first_name:null, last_name:null, country:null, club:null, newsletter:false, joined:new Date().toISOString()}; store.set("pf_demo_user",u); }
@@ -823,6 +824,11 @@ const Live = {
     if(error) return {ok:false, error:error.message}; return {ok:true};
   },
   async openLink(){ return null; },
+  async verifyCode(email,code){
+    const {data,error}=await this.sb.auth.verifyOtp({email, token:code, type:"email"});
+    if(error) return {ok:false, error:/expired|invalid/i.test(error.message)?"That code is wrong or has expired. Check it, or send a new one.":error.message};
+    return {ok:!!data?.session};
+  },
   async saveProfile(p){ const {error}=await this.sb.from("profiles").update(p).eq("id",this.user.id); if(error) throw error; await this.loadProfile(); return this.session(); },
   async myVotes(){ if(!this.user) return {}; const {data}=await this.sb.from("votes").select("market_id,side").eq("user_id",this.user.id); const o={}; (data||[]).forEach(r=>o[r.market_id]=r.side); return o; },
   async cast(id,side){ const {error}=await this.sb.rpc("cast_vote",{p_market:id,p_side:side}); if(error) throw error; },
@@ -849,6 +855,8 @@ const App = {
       catch(e){ console.warn("Supabase failed to load, falling back to demo", e); }
     }
     $("#demoBar").hidden = api.mode!=="demo";
+    const authErr = /error_code=|error_description=/.test(location.hash) ? new URLSearchParams(location.hash.slice(1)) : null;
+    if(authErr) history.replaceState(null,"",location.pathname+location.search);
     S.user = await api.init();
     await this.refresh();
     // a pending vote survives the trip through the magic link
@@ -859,6 +867,13 @@ const App = {
     $("#stripShare").addEventListener("click",()=>shareOpen());
     $("#resetDemo").addEventListener("click",()=>{ Demo.reset(); S.user=null; S.votes={}; S.picks={}; confirmBar(); this.refresh().then(()=>{ go("markets"); toast("Demo reset."); }); });
     this.route();
+    if(authErr && !S.user){
+      const pending=store.get("pf_pending",null);
+      openEmail(pending);
+      $("#emErr").textContent = /expired/i.test(authErr.get("error_code")||authErr.get("error_description")||"")
+        ? "That link was already used or has expired. Each link works once, on one device. Enter your email for a new code."
+        : "That sign-in link didn't work. Enter your email for a new code.";
+    }
   },
   async refresh(){
     try{ S.tallies = await api.tallies(); }catch(e){ console.error(e); }
@@ -1461,13 +1476,13 @@ function openEmail(pending,opts={}){
     <div class="eyebrow">${pending?"One step to count it":opts.suggest?"One step to send it":"Sign in"}</div>
     <h2>${pending? (pending.id===PETITION.market&&pending.side==="yes"?"Sign it for real":"Make it count") :opts.newsletter?"Join The Pepstein Files":opts.suggest?"Sign in to send it":"Sign in with email"}</h2>
     ${pickPill(pending)}${opts.count>1?`<p class="fine" style="margin-top:-6px">+ ${opts.count-1} other ${opts.count===2?"pick":"picks"}, counted at the same time.</p>`:""}
-    <p>We'll email you a sign-in link. No password. ${pending?"Your vote counts when you click it. One counted vote per email, so the totals stay honest.":opts.suggest?"Your suggestion is sent when you click it, and we'll email you if it goes live.":""}</p>
+    <p>We'll email you a 6-digit code. No password. ${pending?"Your vote counts once you enter it. One counted vote per email, so the totals stay honest.":opts.suggest?"Your suggestion is sent once you enter it, and we'll email you if it goes live.":""}</p>
     <form id="emailForm" class="field" novalidate>
       <label for="em">Email</label>
       <input id="em" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required>
       <label class="check" style="margin-top:8px"><input type="checkbox" id="nlOpt" ${opts.newsletter?"checked":""}><span>Also send me <strong>The Pepstein Files</strong> newsletter: short explainers when new files drop.</span></label>
       <div class="err" id="emErr"></div>
-      <button class="btn solid" type="submit">Email me the link</button>
+      <button class="btn solid" type="submit">Email me a code</button>
     </form>
     <p class="fine">One vote per email per market. Market alerts for markets you vote on. Mute any time.</p>`);
   $("#emailForm").addEventListener("submit",async e=>{
@@ -1482,12 +1497,28 @@ function openEmail(pending,opts={}){
 function sentModal(em,pending){
   modal(`
     <div class="eyebrow">Check your inbox</div>
-    <h2>Link sent</h2>
+    <h2>Enter your code</h2>
     ${pickPill(pending)}
-    <p>We sent a sign-in link to <strong>${esc(em)}</strong>. Open it on this device to finish. It expires in an hour.</p>
-    ${api.mode==="demo"? `<div class="inbox"><span class="eyebrow">Demo inbox</span><strong>Your Pepstein Files sign-in link</strong><span class="fine">In the live site this arrives by email.</span><div><button class="btn solid" id="openLink">Open the link</button></div></div>` : `<p class="fine">Nothing there? Check spam, or close this and try again.</p>`}
+    <p>We emailed a code to <strong>${esc(em)}</strong>. Type it here, or tap the link in the email on this device. Codes expire in an hour.</p>
+    <form id="codeForm" class="field" novalidate>
+      <label for="otp">Code</label>
+      <input id="otp" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="10" placeholder="123456" style="font-size:22px;letter-spacing:6px;text-align:center">
+      <div class="err" id="otpErr"></div>
+      <button class="btn solid" type="submit">${pending?"Count my vote":"Sign in"}</button>
+    </form>
+    ${api.mode==="demo"? `<p class="fine">Demo: any code works.</p>` : `<p class="fine">Nothing there? Check spam and Promotions. <a href="#" id="resend">Send a new code</a></p>`}
     <button class="btn" data-x>Close</button>`);
-  $("#openLink")?.addEventListener("click",async()=>{ await api.openLink(); App.onSignedIn(); });
+  $("#codeForm").addEventListener("submit",async e=>{
+    e.preventDefault(); const code=$("#otp").value.replace(/\D/g,"");
+    if(code.length<6){ $("#otpErr").textContent="Enter the code from the email."; return; }
+    const btn=e.target.querySelector("button"); btn.disabled=true;
+    const r=await api.verifyCode(em,code); btn.disabled=false;
+    if(!r.ok){ $("#otpErr").textContent=r.error||"That didn't work. Try again."; return; }
+    if(r.demo) App.onSignedIn();
+    // live: the auth listener picks up the new session and finishes the vote
+  });
+  $("#resend")?.addEventListener("click",async e=>{ e.preventDefault(); const r=await api.requestLink(em);
+    $("#otpErr").textContent = r.ok ? "New code sent. Use the newest email." : (r.error||"Couldn't send. Try again in a minute."); });
 }
 function openProfile(pending,editing){
   const u=S.user||{};
