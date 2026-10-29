@@ -214,6 +214,10 @@ main{padding-block:28px 72px;display:grid;gap:56px;position:relative;z-index:2}
 .side{display:grid;gap:28px;min-width:0}
 .side h3{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
 .share-row{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.miles{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-start;font-size:12px;font-variant-numeric:tabular-nums}
+.miles span{padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.miles span.done{background:var(--mark);border-color:var(--mark);color:var(--mark-ink);font-weight:600}
+.miles span.next{border-color:var(--ink);color:var(--ink);font-weight:600}
 .cel{display:grid;place-items:center;min-height:96px}
 .cel-img{width:100%;max-height:240px;object-fit:contain;border-radius:14px;animation:celIn .55s cubic-bezier(.2,1.6,.4,1) both}
 .cel-stamp{font-family:var(--f-display);font-weight:900;font-size:44px;letter-spacing:.06em;text-transform:uppercase;color:#b8860b;border:4px solid currentColor;border-radius:8px;padding:6px 18px 2px;transform:rotate(-6deg);animation:celIn .55s cubic-bezier(.2,1.6,.4,1) both}
@@ -577,6 +581,11 @@ const SOURCES = {
    The 115 Petition = YES on the headline market.
    Counter-petition  = NO on the same market.
    ------------------------------------------------------------ */
+/* Milestones: the bar always fills toward the next one, so there's always a goal people can help hit. */
+const MILESTONES = [100,250,500,1000,2500,5000,10000,25000,50000,100000,250000,500000,1000000];
+const goalFor = n => MILESTONES.find(m=>m>n) || Math.ceil((n+1)/1000000)*1000000;
+const lastMilestone = n => [...MILESTONES].reverse().find(m=>m<=n) || 0;
+const kfmt = n => n>=1000000? (n/1000000)+"m" : n>=1000? (n/1000)+"k" : String(n);
 const PETITION = {
   market: "strip-titles",
   name: "The 115 Petition",
@@ -781,6 +790,8 @@ const Demo = {
   },
   async requestLink(email){ store.set("pf_demo_pending_email",email); return {ok:true}; },
   async verifyCode(email,code){ await this.openLink(); return {ok:true, demo:true}; },
+  async claimReferral(){ return false; },
+  async myReferrals(){ return {joined:0, signed:0}; },
   async openLink(){ // simulates the user clicking the magic link
     const email=store.get("pf_demo_pending_email",""); let u=store.get("pf_demo_user",null);
     if(!u){ u={email, supporter_no: 18000+Math.floor(Math.random()*900), first_name:null, last_name:null, country:null, club:null, newsletter:false, joined:new Date().toISOString()}; store.set("pf_demo_user",u); }
@@ -840,6 +851,8 @@ const Live = {
     if(error) return {ok:false, error:error.message}; return {ok:true};
   },
   async openLink(){ return null; },
+  async claimReferral(code,src){ const {data,error}=await this.sb.rpc("claim_referral",{p_code:code,p_src:src}); if(error) throw error; return !!data; },
+  async myReferrals(){ if(!this.user) return {joined:0,signed:0}; const {data}=await this.sb.rpc("my_referrals"); const r=(data&&data[0])||{}; return {joined:+(r.joined||0), signed:+(r.signed||0)}; },
   async verifyCode(email,code){
     const {data,error}=await this.sb.auth.verifyOtp({email, token:code, type:"email"});
     if(error) return {ok:false, error:/expired|invalid/i.test(error.message)?"That code is wrong or has expired. Check it, or send a new one.":error.message};
@@ -871,6 +884,7 @@ const App = {
       catch(e){ console.warn("Supabase failed to load, falling back to demo", e); }
     }
     $("#demoBar").hidden = api.mode!=="demo";
+    Referral.capture();
     const authErr = /error_code=|error_description=/.test(location.hash) ? new URLSearchParams(location.hash.slice(1)) : null;
     if(authErr) history.replaceState(null,"",location.pathname+location.search);
     S.user = await api.init();
@@ -899,7 +913,7 @@ const App = {
     this.syncAcct();
   },
   syncStrip(){ const t=S.tallies[PETITION.market]||{yes:0,no:0};
-    $("#stripCount").textContent=fmt(t.yes); $("#stripBar").style.width=Math.min(100,t.yes/PETITION.goal*100)+"%";
+    $("#stripCount").textContent=fmt(t.yes); $("#stripBar").style.width=Math.min(100,t.yes/goalFor(t.yes)*100)+"%";
     const mine=S.votes[PETITION.market]; const b=$("#stripSign"); b.textContent= mine==="yes"?"Signed ✓":"Sign"; },
   syncAcct(){ this.syncStrip(); const a=$("#acctLink"); a.textContent = S.user ? (S.user.first_name ? S.user.first_name : "Account") : "Sign in"; a.classList.toggle("solid", !S.user); },
   async onSignedIn(silent){
@@ -908,6 +922,7 @@ const App = {
     this.syncAcct();
     S.votes = await api.myVotes();
     const pending = store.get("pf_pending",null);
+    await Referral.claim();
     if(store.get("pf_nl_intent",false)){ store.del("pf_nl_intent"); if(!S.user.newsletter){ try{ S.user=await api.setNewsletter(true); }catch(e){} } }
     if(pending){ await finishVote(pending); }
     else if(pendingPicks().length){ await flushPicks(); await castAndRefresh(null); closeModal(); toast("Your picks are counted."); }
@@ -1131,36 +1146,40 @@ async function renderDetail(v,m){
 }
 function splitRow(s){ const p=pct(s); return `<div class="split"><span>${esc(s.club)}</span><div class="bar"><span style="width:${p}%"></span></div><span class="num">${p}%</span></div>`; }
 function fakeSplits(){ return ["Liverpool","Arsenal","Man United","Chelsea","Man City","No club"].map((c,i)=>splitRow({club:c,yes:[8,7,7,6,1,5][i],no:[2,3,3,4,9,5][i]})).join(""); }
-function shareData(){ const t=S.tallies[PETITION.market]||{yes:0,no:0};
-  const url=`${CONFIG.SITE_URL}/#petition`;
-  const text=`${fmt(t.yes)} people have signed ${PETITION.name} to strip Man City's titles. Sign it, or sign the counter-petition:`;
+// Personal share links: ?r=<your code>&s=<channel>. Signers who arrive through them are credited to you.
+function shareUrl(ch){ const q=new URLSearchParams(); if(S.user?.ref_code) q.set("r",S.user.ref_code); if(ch) q.set("s",ch); const qs=q.toString(); return `${CONFIG.SITE_URL}/${qs?"?"+qs:""}`; }
+function shareData(ch){ const t=S.tallies[PETITION.market]||{yes:0,no:0};
+  const url=shareUrl(ch||"copy");
+  const text=`${fmt(t.yes)} people have signed ${PETITION.name} to strip Man City's titles. Help get it to ${fmt(goalFor(t.yes))}. Sign it, or sign the counter-petition:`;
   return {url,text}; }
 async function shareOpen(){
-  const {url,text}=shareData();
+  const {url,text}=shareData("native");
   if(navigator.share && api.mode==="live"){ try{ await navigator.share({title:PETITION.name,text,url}); return; }catch(e){ if(e && e.name==="AbortError") return; } }
   modal(`<div class="eyebrow">Spread it</div><h2>Share the petition</h2>
-    <p>${esc(text)}</p>
+    <p>${esc(shareData().text)}</p>
     ${shareButtons()}
     <button class="btn" data-x>Close</button>`);
   bindShare($("#modalRoot"));
 }
-function shareButtons(){ const {url,text}=shareData(); const u=encodeURIComponent(url), t=encodeURIComponent(text);
+function shareButtons(){ const L=ch=>{ const {url,text}=shareData(ch); return {u:encodeURIComponent(url), t:encodeURIComponent(text)}; };
+  const wa=L("wa"), x=L("x"), fb=L("fb"), rd=L("reddit");
   return `<div class="share-row">
-    <a class="btn" href="https://wa.me/?text=${t}%20${u}" target="_blank" rel="noopener">WhatsApp</a>
-    <a class="btn" href="https://twitter.com/intent/tweet?text=${t}&url=${u}" target="_blank" rel="noopener">X</a>
-    <a class="btn" href="https://www.facebook.com/sharer/sharer.php?u=${u}" target="_blank" rel="noopener">Facebook</a>
-    <a class="btn" href="https://www.reddit.com/submit?url=${u}&title=${t}" target="_blank" rel="noopener">Reddit</a>
+    <a class="btn" href="https://wa.me/?text=${wa.t}%20${wa.u}" target="_blank" rel="noopener">WhatsApp</a>
+    <a class="btn" href="https://twitter.com/intent/tweet?text=${x.t}&url=${x.u}" target="_blank" rel="noopener">X</a>
+    <a class="btn" href="https://www.facebook.com/sharer/sharer.php?u=${fb.u}" target="_blank" rel="noopener">Facebook</a>
+    <a class="btn" href="https://www.reddit.com/submit?url=${rd.u}&title=${rd.t}" target="_blank" rel="noopener">Reddit</a>
     <button class="btn solid" type="button" data-copyshare>Copy link</button></div>`; }
-function bindShare(root){ root.querySelectorAll("[data-copyshare]").forEach(b=>b.addEventListener("click",()=>{ const {url,text}=shareData(); copy(`${text} ${url}`); })); }
+function bindShare(root){ root.querySelectorAll("[data-copyshare]").forEach(b=>b.addEventListener("click",()=>{ const {url,text}=shareData("copy"); copy(`${text} ${url}`); })); }
 function ago(iso){ const s=Math.max(1,Math.round((Date.now()-new Date(iso))/1000)); if(s<60) return "just now"; const m=Math.round(s/60); if(m<60) return m+" min ago"; const h=Math.round(m/60); if(h<24) return h+" hr ago"; return Math.round(h/24)+" d ago"; }
 
 async function renderPetition(v){
   const t=S.tallies[PETITION.market]||{yes:0,no:0}; const mine=sideOf(PETITION.market); const counted=!!mine && S.votes[PETITION.market]===mine;
-  const pctGoal=Math.min(100,t.yes/PETITION.goal*100); const left=Math.max(0,PETITION.goal-t.yes);
+  const G=goalFor(t.yes), hit=lastMilestone(t.yes);
+  const pctGoal=Math.min(100,t.yes/G*100); const left=Math.max(0,G-t.yes);
   const reduced=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
   const anim=!renderPetition.done && !reduced; renderPetition.done=true;
   const teaser=["relegate","deduction","title-lost"].map(id=>byId[id]).filter(Boolean);
-  const k=PETITION.goal/5, tick=n=>n>=1000? (n/1000)+"k" : String(n);
+  const k=G/5, tick=kfmt;
   v.innerHTML = `
   <section class="lp" aria-labelledby="pt">
     <div class="kicker rise"><span class="tape">${esc(PETITION.name)}</span><span>Premier League v Manchester City · Decision published 29 Sep 2026 · Sanctions pending</span></div>
@@ -1171,9 +1190,10 @@ async function renderPetition(v){
       <p class="plates-cap">${esc(RECORD.caption)} <a href="${SOURCES[RECORD.src].u}" target="_blank" rel="noopener">Source ↗</a></p>
     </div>
     <div class="tally rise" style="--d:4">
-      <div class="tally-top"><div class="big" id="petCount">${fmt(anim?0:t.yes)}</div><div class="of"><b>signatures</b><br>Goal ${fmt(PETITION.goal)}<span class="sep"> · </span><span class="left">${left? fmt(left)+" to go" : "reached"}</span></div></div>
-      <div class="goal" role="progressbar" aria-valuemin="0" aria-valuemax="${PETITION.goal}" aria-valuenow="${t.yes}" aria-label="Signatures toward goal"><span id="petBar" style="width:${anim?0:pctGoal}%"></span>${[20,40,60,80].map(x=>`<i style="left:${x}%"></i>`).join("")}</div>
+      <div class="tally-top"><div class="big" id="petCount">${fmt(anim?0:t.yes)}</div><div class="of"><b>signatures</b><br>Next milestone ${fmt(G)}<span class="sep"> · </span><span class="left">${fmt(left)} to go</span></div></div>
+      <div class="goal" role="progressbar" aria-valuemin="0" aria-valuemax="${G}" aria-valuenow="${t.yes}" aria-label="Signatures toward the next milestone"><span id="petBar" style="width:${anim?0:pctGoal}%"></span>${[20,40,60,80].map(x=>`<i style="left:${x}%"></i>`).join("")}</div>
       <div class="ticks" aria-hidden="true">${[0,1,2,3,4,5].map(i=>`<span>${tick(i*k)}</span>`).join("")}</div>
+      <div class="miles" aria-label="Milestones">${MILESTONES.filter(m=>m<=Math.max(G,1000)).slice(0,8).map(m=>`<span class="${m<=hit?"done":m===G?"next":""}">${m<=hit?"✓ ":""}${kfmt(m)}</span>`).join("")}</div>
     </div>
     <div class="vote-row rise" style="--d:5">
       <button class="vbtn y ${mine==="yes"?"picked":""}" data-vote="${PETITION.market}" data-side="yes"><span class="lab"><span class="dot y"></span>${mine==="yes"? (counted?"You've signed":"Confirm to sign") : "Yes, strip them"}</span><small>${mine==="yes"? (counted?"Now get one friend to sign":"Picked. Not counted until you confirm your email.") : "Sign the petition · free, 30 seconds"}</small></button>
@@ -1487,6 +1507,26 @@ function closeModal(){ $("#modalRoot").innerHTML=""; }
 function bindClose(){ const s=$("#modalRoot .scrim"); s.addEventListener("click",e=>{ if(e.target===s||e.target.closest("[data-x]")) closeModal(); }); document.addEventListener("keydown",function k(e){ if(e.key==="Escape"){ closeModal(); document.removeEventListener("keydown",k);} }); }
 function pickPill(p){ if(!p) return ""; const m=byId[p.id]; return `<div class="pick ${p.side==="yes"?"y":"n"}">${p.side==="yes"?"✓":"✕"} ${esc(p.side==="yes"?yesLabel(m):noLabel(m))}<span class="fine" style="margin-left:auto;color:inherit;opacity:.8">${esc(m.short||m.q)}</span></div>`; }
 
+/* Referrals: remember who sent this visitor (first touch, 30 days), credit them once the visitor signs in. */
+const Referral = {
+  capture(){
+    const q=new URLSearchParams(location.search); const r=(q.get("r")||"").toLowerCase(), src=(q.get("s")||"").toLowerCase();
+    if(!r && !src) return;
+    const ok=x=>/^[a-z0-9_]{1,16}$/.test(x);
+    const prev=store.get("pf_ref",null);
+    if(r && ok(r) && !(prev && Date.now()-prev.at < 30*864e5)) store.set("pf_ref",{r, s: ok(src)?src:"other", at:Date.now()});
+    Track.capture("ref_landed",{ref_src: ok(src)?src:"other", has_ref: !!r});
+    store.set("pf_ref_src", ok(src)?src:"other");
+    q.delete("r"); q.delete("s"); const qs=q.toString();
+    history.replaceState(null,"",location.pathname+(qs?"?"+qs:"")+location.hash); // so re-shares carry the new sharer's code, not this one
+  },
+  async claim(){
+    const p=store.get("pf_ref",null); if(!p || !S.user) return;
+    store.del("pf_ref");
+    if(p.r===S.user.ref_code) return;
+    try{ const ok=await api.claimReferral(p.r,p.s); if(ok) Track.capture("referral_claimed",{ref_src:p.s}); }catch(e){ console.warn(e); }
+  }
+};
 /* Bot check (Cloudflare Turnstile). Supabase verifies the token server-side. */
 const TURNSTILE = { siteKey:"0x4AAAAAAFpFd86HAa24MPma", src:"https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" };
 const Captcha = { token:null, id:null,
@@ -1589,15 +1629,16 @@ function doneModal(m,side){
   const t=S.tallies[m.id]||{yes:0,no:0}; const p=pct(t); const agree= side==="yes"? p : 100-p;
   const isPet = m.id===PETITION.market;
   const mine = isPet ? (side==="yes"? t.yes : t.no) : tot(t);
-  const art = CELEBRATE.img ? `<img class="cel-img" src="${esc(CELEBRATE.img)}" alt="${esc(CELEBRATE.alt)}">` : `<div class="cel-stamp">${isPet? (side==="yes"?"Signed":"Counter-signed") : "Counted"}</div>`;
+  const G0 = goalFor(Math.max(0,mine-1)), crossed = isPet && side==="yes" && mine>=G0;
+  const art = CELEBRATE.img ? `<img class="cel-img" src="${esc(CELEBRATE.img)}" alt="${esc(CELEBRATE.alt)}">` : `<div class="cel-stamp">${crossed? kfmt(G0)+"!" : isPet? (side==="yes"?"Signed":"Counter-signed") : "Counted"}</div>`;
   const nl = !S.user.newsletter;
   modal(`
     <div class="cel">${art}</div>
     <div class="eyebrow">${isPet? "It counts" : "Vote counted"}</div>
     <h2>${isPet? `You're signature <span id="celN">${fmt(Math.max(0,mine-1))}</span>` : `You're voter <span id="celN">${fmt(Math.max(0,mine-1))}</span>`}</h2>
     ${pickPill({id:m.id,side})}
-    ${isPet && side==="yes"? `<div class="goal cel-goal" aria-hidden="true"><span id="celBar" style="width:${Math.min(100,(mine-1)/PETITION.goal*100)}%"></span></div>
-      <p><strong style="color:var(--ink)">${fmt(Math.max(0,PETITION.goal-mine))}</strong> to go to ${fmt(PETITION.goal)}. ${agree}% of everyone who's voted is with you.</p>`
+    ${isPet && side==="yes"? `<div class="goal cel-goal" aria-hidden="true"><span id="celBar" style="width:${Math.min(100,(mine-1)/G0*100)}%"></span></div>
+      <p>${crossed? `<strong style="color:var(--ink)">You took it to ${fmt(G0)}.</strong> Next stop ${fmt(goalFor(mine))}.` : `<strong style="color:var(--ink)">${fmt(Math.max(0,G0-mine))}</strong> to the next milestone, ${fmt(G0)}.`} ${agree}% of everyone who's voted is with you.</p>`
       : `<p><strong style="color:var(--ink)">${agree}%</strong> of ${fmt(tot(t))} voters agree with you. You can change your vote any time.</p>`}
     <div style="display:grid;gap:8px"><strong style="color:var(--ink)">${isPet&&side==="yes"? "Every signature you bring is one closer. Send it to one mate." : "Send it to someone who'd disagree."}</strong>${shareButtons()}</div>
     ${!hasProfile(S.user)? `<button class="btn" type="button" id="addClub">See how your club voted</button>` : ""}
@@ -1605,10 +1646,11 @@ function doneModal(m,side){
     <button class="btn" data-x>Done</button>`);
   bindShare($("#modalRoot"));
   // the number ticks over to theirs
-  const n=$("#celN"); if(n){ setTimeout(()=>{ n.textContent=fmt(mine); n.classList.add("tick"); const b=$("#celBar"); if(b) b.style.width=Math.min(100,mine/PETITION.goal*100)+"%"; },700); }
+  const n=$("#celN"); if(n){ setTimeout(()=>{ n.textContent=fmt(mine); n.classList.add("tick"); const b=$("#celBar"); if(b) b.style.width=Math.min(100,mine/G0*100)+"%"; },700); }
   $("#addClub")?.addEventListener("click",()=>openProfile(null));
+
   $("#nlYes")?.addEventListener("click",async e=>{ S.user=await api.setNewsletter(true); e.target.outerHTML=`<span class="fine" style="justify-self:center">You're on the list.</span>`; });
-  $("#shareIt")?.addEventListener("click",()=>copy(`${CONFIG.SITE_URL}/#${m.id}`));
+  $("#shareIt")?.addEventListener("click",()=>copy(shareUrl("copy")+`#${m.id}`));
 }
 function maybeOfferNewsletter(m,side){ if(store.get("pf_nl_offered",false)) return; store.set("pf_nl_offered",true); doneModal(m,side); }
 
@@ -1649,7 +1691,7 @@ const Track = {
       session_recording:{ maskAllInputs:true },
       before_send:(ev)=>{ if(ev&&ev.properties){ for(const k in ev.properties) ev.properties[k]=Track.strip(ev.properties[k]); } return ev; }
     });
-    window.posthog.register({site_mode: api.mode});
+    window.posthog.register({site_mode: api.mode, ...(store.get("pf_ref_src",null)? {ref_src: store.get("pf_ref_src",null)} : {})});
     this.ready=true; this.q.splice(0).forEach(([n,p])=>window.posthog.capture(n,p));
     this.identify();
     if(this.consent()==="pending") this.showConsent();
