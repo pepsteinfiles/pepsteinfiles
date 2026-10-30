@@ -529,6 +529,47 @@ footer button.linkish{background:none;border:0;padding:0;color:inherit;text-deco
 .offline{max-width:560px;margin:clamp(48px,12vh,120px) auto;padding:0 20px;text-align:center;display:grid;gap:16px;justify-items:center}
 .offline h1{font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:clamp(36px,7vw,64px);line-height:.9;margin:0}
 .offline p{margin:0;color:var(--muted);font-size:16px;max-width:46ch}
+
+/* v4.8: best-of hero. Stamp on the headline, one status line, no ticker / chips / rail */
+.h1wrap{position:relative;display:inline-block;padding-top:6px}
+.pet-stamp{position:absolute;top:-20px;left:-14px;z-index:2;transform:rotate(-5deg);box-shadow:0 2px 6px -2px rgba(0,0,0,.25);white-space:nowrap}
+@media (max-width:520px){.h1wrap{padding-top:26px}.pet-stamp{top:-8px;left:50%;transform:translateX(-50%) rotate(-3deg)}}
+@media (min-width:521px){.lp h1{font-size:clamp(52px,7.6vw,96px)}}
+/* status: count + deadline, one line, right under the buttons */
+.pstat{width:min(720px,100%);display:grid;gap:8px;text-align:left}
+.st-line{margin:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;font-size:clamp(15px,1.5vw,17px);color:var(--muted)}
+.st-line b{color:var(--ink)}
+.st-n{font-family:var(--f-display);font-weight:900;font-size:clamp(30px,3.4vw,40px);line-height:.9;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.st-b .st-n{background:linear-gradient(transparent 60%,var(--mark) 60%,var(--mark) 94%,transparent 94%);padding:0 .06em}
+.st-c{color:var(--ink);font-weight:600}
+.pstat .goal{height:8px}
+.st-sub{margin:0;display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted)}
+.st-sub span:last-child{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .st-b .st-n{background:none;color:var(--mark)}}
+:root[data-theme="dark"] .st-b .st-n{background:none;color:var(--mark)}
+/* hero order: headline, ask, (titles on desktop), buttons, status, trust, (titles on phones) */
+.lp .vote-row{order:1}.lp .pstat{order:2}.lp .trust{order:3}.lp > .rise:has(.plates){order:4}
+@media (min-width:861px){.lp > .rise:has(.plates){order:0}}
+.plate{padding:9px 22px 8px 13px;min-width:128px}
+.plate .yr{font-size:22px}
+.plate .lbl{font-size:11.5px}
+.plate .star{font-size:54px;top:-12px;right:-9px}
+.plates-cap a{display:inline-block;padding:12px 2px;margin:-12px 0}
+/* what happened: one column, delivery line, independence note */
+.indep{margin:0;font-size:13px;color:var(--muted);max-width:62ch}
+.indep strong{color:var(--ink);font-weight:600}
+.brief{display:grid;gap:0;border-top:1px solid var(--line);padding-top:28px;max-width:760px}
+.brief h2{font-family:var(--f-display);font-weight:900;font-size:clamp(30px,3.6vw,40px);text-transform:uppercase;line-height:.92;margin:0 0 14px}
+.brief p{margin:0 0 12px;font-size:16.5px;max-width:62ch}
+.brief .deliv{font-family:var(--f-serif);font-size:clamp(19px,1.9vw,22px);line-height:1.4;color:var(--ink);margin:18px 0 14px;max-width:46ch}
+.brief .srcline{font-size:12.5px;color:var(--muted);margin:2px 0 0}
+.brief .srcline a{color:inherit;text-underline-offset:2px}
+.brief .indep{margin-top:16px;font-size:13px}
+/* contrast fixes: sealed stamps and the letter's filed stamp */
+:root:not([data-theme="dark"]) .stamp{color:#7d5c08;border-color:#7d5c08}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .stamp{color:var(--mark);border-color:var(--mark)}}
+.paper .filed{opacity:1}
+footer .wrap > div{max-width:60ch}
 </style>
 </head>
 <body>
@@ -618,12 +659,17 @@ const SOURCES = {
 const MILESTONES = [100,250,500,1000,2500,5000,10000,25000,50000,100000,250000,500000,1000000];
 const goalFor = n => MILESTONES.find(m=>m>n) || Math.ceil((n+1)/1000000)*1000000;
 const lastMilestone = n => [...MILESTONES].reverse().find(m=>m<=n) || 0;
+function deliveryIn(){ const ms=new Date(PETITION.firstDelivery)-Date.now(); return ms<=0? 0 : Math.ceil(ms/864e5); }
+function statusDue(){ const d=deliveryIn(), day=PETITION.firstDeliveryLabel.replace(/ \d{4}$/,"");
+  return d>0? `<b class="st-n">${d}</b> ${d===1?"day":"days"} to first delivery, ${esc(day)}` : `Delivered ${esc(day)} · <b>signing stays open</b>`; }
 const kfmt = n => n>=1000000? (n/1000000)+"m" : n>=1000? (n/1000)+"k" : String(n);
 const PETITION = {
   market: "strip-titles",
   name: "The 115 Petition",
   goal: 25000,
   deliverWhen: "the day the sanctions are announced",
+  // First delivery: the count goes to the league on this date whatever it is; signing stays open after.
+  firstDelivery: "2026-11-30T12:00:00Z", firstDeliveryLabel: "30 Nov 2026",
   to: "To the Board of the Premier League",
   ask: "Remove the Premier League titles Manchester City won in the seasons where the Independent Commission found breaches of the rules.",
   body: [
@@ -742,9 +788,13 @@ function guessCountry(){
    The two below are placeholders. Swap in the questions you want.
    ------------------------------------------------------------ */
 const FAN_QUESTIONS = [
-  {id:"years", q:"How long have you supported your club?", opts:["Under 5 years","5–15 years","15+ years","Since birth"]},
-  {id:"watch", q:"How do you watch most matches?", opts:["At the ground","TV subscription","At the pub","Highlights only"]}
+  // Delivery-pack line: "2,140 season ticket holders signed."
+  {id:"matchgoing", q:"Do you go to matches?", opts:["Season ticket holder","Club member","Go sometimes","Watch on TV"]},
+  // Quotes for the delivery pack. Only asked after a petition vote. why_quote = OK to quote with first name + club.
+  {id:"why", type:"text", petition:true, q:"Why did you sign?", qNo:"Why did you counter-sign?", max:280},
+  {id:"years", q:"How long have you supported your club?", opts:["Under 5 years","5–15 years","15+ years","Since birth"]}
 ];
+// Account page lists only questions that can be asked from there (the "why" one needs a petition vote first)
 
 /* ------------------------------------------------------------
    Suggestions: fans submit petitions/forecasts, you approve.
@@ -756,6 +806,8 @@ const SUGGEST = { maxPending: 3, qMax: 110, detailMax: 600 };
 const hasProfile = u => !!(u && u.club);   // optional extras (club/country/name); never needed to count a vote
 /* Celebration after a vote counts. Set img to a path (e.g. "/signed.png") to show your picture; empty = built-in stamp. */
 const CELEBRATE = { img:"", alt:"" };
+/* "+N in 24 hrs" on the status line. Stays hidden until the last 24 hours bring in at least minToday signatures. */
+const MOMENTUM = { minToday: 20 };
 
 /* ------------------------------------------------------------
    Helpers
@@ -838,8 +890,10 @@ const Demo = {
   async mutes(){ return store.get("pf_demo_mutes",{}); },
   async setMute(id,on){ const m=store.get("pf_demo_mutes",{}); if(on) m[id]=true; else delete m[id]; store.set("pf_demo_mutes",m); },
   async setNewsletter(on){ return this.saveProfile({newsletter:on}); },
+  async setPetitionUpdates(on){ return this.saveProfile({petition_updates:on}); },
   async marketStatus(){ return {}; },
   async leaderboard(){ return []; },
+  async momentum(){ return {today:37, clubs:14, countries:11}; },
   async recentSigners(){
     const names=["Sam","Aoife","Jordan","Priya","Tom","Chidi","Ellie","Marcus","Niamh","Kwame","Lucy","Dan","Ingrid","Ravi"];
     const places=[["Ireland","Liverpool"],["United Kingdom","Arsenal"],["United States","Liverpool"],["Nigeria","Manchester United"],["United Kingdom","Tottenham Hotspur"],["Norway","Liverpool"],["United Kingdom","Chelsea"],["Kenya","Arsenal"],["Canada","Newcastle United"],["Australia",null]];
@@ -852,7 +906,7 @@ const Demo = {
   async submitRequest(r){ const list=store.get("pf_demo_requests",[]); list.push({...r,id:"r"+Date.now(),status:"pending",created_at:new Date().toISOString()}); store.set("pf_demo_requests",list); return {ok:true}; },
   async myRequests(){ return store.get("pf_demo_requests",[]).slice().reverse(); },
   async signOut(){ store.del("pf_demo_user"); },
-  reset(){ ["pf_demo_user","pf_demo_votes","pf_demo_log","pf_demo_mutes","pf_demo_pending_email","pf_pending","pf_pending_suggest","pf_demo_requests","pf_nl_offered","pf_nl_intent","pf_picks"].forEach(k=>store.del(k)); }
+  reset(){ ["pf_demo_user","pf_demo_votes","pf_demo_log","pf_demo_mutes","pf_demo_pending_email","pf_pending","pf_pending_suggest","pf_demo_requests","pf_nl_offered","pf_nl_intent","pf_pu_intent","pf_picks"].forEach(k=>store.del(k)); }
 };
 
 /* ------------------------------------------------------------
@@ -898,9 +952,13 @@ const Live = {
   async mutes(){ if(!this.user) return {}; const {data}=await this.sb.from("alert_mutes").select("market_id").eq("user_id",this.user.id); const o={}; (data||[]).forEach(r=>o[r.market_id]=true); return o; },
   async setMute(id,on){ if(on) await this.sb.from("alert_mutes").upsert({user_id:this.user.id,market_id:id}); else await this.sb.from("alert_mutes").delete().eq("user_id",this.user.id).eq("market_id",id); },
   async setNewsletter(on){ return this.saveProfile({newsletter:on, newsletter_at: on? new Date().toISOString(): null}); },
+  // needs petition-updates.sql (column + grant)
+  async setPetitionUpdates(on){ return this.saveProfile({petition_updates:on, petition_updates_at: on? new Date().toISOString(): null}); },
   async marketStatus(){ const {data}=await this.sb.from("markets").select("id,status,outcome"); const o={}; (data||[]).forEach(r=>o[r.id]=r); return o; },
   async leaderboard(){ const {data}=await this.sb.rpc("forecast_leaderboard"); return data||[]; },
   async recentSigners(){ const {data}=await this.sb.rpc("recent_signers",{p_market:PETITION.market,p_side:"yes",p_limit:12}); return data||[]; },
+  // needs petition_momentum() from momentum.sql; until that runs, the row just stays hidden
+  async momentum(){ try{ const {data,error}=await this.sb.rpc("petition_momentum",{p_market:PETITION.market}); if(error) return null; const r=(data&&data[0])||{}; return {today:+(r.today||0), clubs:+(r.clubs||0), countries:+(r.countries||0)}; }catch(e){ return null; } },
   async signOut(){ await this.sb.auth.signOut(); this.user=null; this.profile=null; }
 };
 
@@ -970,6 +1028,7 @@ const App = {
     const pending = store.get("pf_pending",null);
     await Referral.claim();
     if(store.get("pf_nl_intent",false)){ store.del("pf_nl_intent"); if(!S.user.newsletter){ try{ S.user=await api.setNewsletter(true); }catch(e){} } }
+    if(store.get("pf_pu_intent",false)){ store.del("pf_pu_intent"); if(!S.user.petition_updates){ try{ S.user=await api.setPetitionUpdates(true); Track.capture("petition_updates_on"); }catch(e){} } }
     if(pending){ await finishVote(pending); }
     else if(pendingPicks().length){ await flushPicks(); await castAndRefresh(null); closeModal(); toast("Your picks are counted."); }
     else if(store.get("pf_pending_suggest",null)){ if(!hasProfile(S.user)) openProfile(null); else await finishSuggest(); }
@@ -1095,7 +1154,7 @@ async function renderHome(v){
 
   <section aria-labelledby="mk">
     <div class="sec-head">
-      <div><div class="eyebrow">Every open question in the case</div><h2 id="mk">The board</h2></div>
+      <div><h2 id="mk">The board</h2></div>
       <div class="tabs" role="group" aria-label="Filter markets">
         <button data-f="all" aria-pressed="${S.filter==="all"}">All</button>
         <button data-f="should" aria-pressed="${S.filter==="should"}">Petitions</button>
@@ -1131,9 +1190,8 @@ function newsletterBand(){
   const on=S.user?.newsletter;
   return `<section class="band" id="nl" aria-labelledby="nlh">
     <div>
-      <div class="eyebrow">The newsletter</div>
       <h2 id="nlh">The Pepstein Files</h2>
-      <p>Every new document, ruling and statement on the 115 charges, explained in plain English when it lands. Plus what fans around the world actually think about it, and how that's shifting.</p>
+      <p>A free newsletter. Every new document, ruling and statement on the 115 charges, explained in plain English when it lands. Plus what fans around the world actually think about it, and how that's shifting.</p>
       <ul><li>New files and rulings, as they drop</li><li>Fan sentiment: club and country splits, and how they shift</li></ul>
     </div>
     <div style="display:grid;gap:10px;justify-items:start">
@@ -1196,7 +1254,7 @@ function fakeSplits(){ return ["Liverpool","Arsenal","Man United","Chelsea","Man
 function shareUrl(ch){ const q=new URLSearchParams(); if(S.user?.ref_code) q.set("r",S.user.ref_code); if(ch) q.set("s",ch); const qs=q.toString(); return `${CONFIG.SITE_URL}/${qs?"?"+qs:""}`; }
 function shareData(ch){ const t=S.tallies[PETITION.market]||{yes:0,no:0};
   const url=shareUrl(ch||"copy");
-  const text=`${fmt(t.yes)} people have signed ${PETITION.name} to strip Man City's titles. Help get it to ${fmt(goalFor(t.yes))}. Sign it, or sign the counter-petition:`;
+  const text=`${fmt(t.yes)} people have signed ${PETITION.name} to strip Man City's titles. Help get it to ${fmt(goalFor(t.yes))}${deliveryIn()>0?` before it goes to the Premier League on ${PETITION.firstDeliveryLabel.replace(/ \d{4}$/,"")}`:""}. Sign it, or sign the counter-petition:`;
   return {url,text}; }
 async function shareOpen(){
   const {url,text}=shareData("native");
@@ -1226,33 +1284,44 @@ async function renderPetition(v){
   const anim=!renderPetition.done && !reduced; renderPetition.done=true;
   const teaser=["relegate","deduction","title-lost"].map(id=>byId[id]).filter(Boolean);
   const k=G/5, tick=kfmt;
-  v.innerHTML = `
+  const body = `
   <section class="lp" aria-labelledby="pt">
-    <div class="kicker rise"><span class="tape">${esc(PETITION.name)}</span><span>Premier League v Manchester City · Decision published 29 Sep 2026 · Sanctions pending</span></div>
-    <h1 id="pt" class="rise" style="--d:1">${esc(byId[PETITION.market].q).replace(/titles(?=\?)/i, w=>w+'<span class="ast" aria-hidden="true"><svg viewBox="0 0 100 100"><g fill="currentColor"><rect x="41" y="2" width="18" height="96" rx="2"/><rect x="41" y="2" width="18" height="96" rx="2" transform="rotate(60 50 50)"/><rect x="41" y="2" width="18" height="96" rx="2" transform="rotate(120 50 50)"/></g></svg></span>')}</h1>
+    <div class="h1wrap rise" style="--d:1"><span class="tape pet-stamp">${esc(PETITION.name)}</span><h1 id="pt">${esc(byId[PETITION.market].q).replace(/titles(?=\?)/i, w=>w+'<span class="ast" aria-hidden="true"><svg viewBox="0 0 100 100"><g fill="currentColor"><rect x="41" y="2" width="18" height="96" rx="2"/><rect x="41" y="2" width="18" height="96" rx="2" transform="rotate(60 50 50)"/><rect x="41" y="2" width="18" height="96" rx="2" transform="rotate(120 50 50)"/></g></svg></span>')}</h1></div>
     <p class="ask rise" style="--d:2">The ask: <b>${esc(PETITION.ask)}</b></p>
     <div class="rise" style="--d:3;display:grid;gap:12px;justify-items:center">
       <div class="plates">${RECORD.titles.map(y=>`<div class="plate"><span class="yr">${esc(y)}</span><span class="lbl">League champions</span><span class="star" aria-hidden="true">*</span></div>`).join("")}</div>
       <p class="plates-cap">${esc(RECORD.caption)} <a href="${SOURCES[RECORD.src].u}" target="_blank" rel="noopener">Source ↗</a></p>
     </div>
-    <div class="tally rise" style="--d:4">
-      <div class="tally-top"><div class="big" id="petCount">${fmt(anim?0:t.yes)}</div><div class="of"><b>signatures</b><br>Next milestone ${fmt(G)}<span class="sep"> · </span><span class="left">${fmt(left)} to go</span></div></div>
-      <div class="goal" role="progressbar" aria-valuemin="0" aria-valuemax="${G}" aria-valuenow="${t.yes}" aria-label="Signatures toward the next milestone"><span id="petBar" style="width:${anim?0:pctGoal}%"></span>${[20,40,60,80].map(x=>`<i style="left:${x}%"></i>`).join("")}</div>
-      <div class="ticks" aria-hidden="true">${[0,1,2,3,4,5].map(i=>`<span>${tick(i*k)}</span>`).join("")}</div>
+    <div class="pstat rise" style="--d:4">
+      <p class="st-line"><span class="st-a"><b class="st-n" id="petCount">${fmt(anim?0:t.yes)}</b> signed</span><span class="st-b">${statusDue()}</span><span class="st-c" id="moToday" hidden></span></p>
+      <div class="goal" role="progressbar" aria-valuemin="0" aria-valuemax="${G}" aria-valuenow="${t.yes}" aria-label="Signatures toward the next milestone, ${fmt(G)}"><span id="petBar" style="width:${anim?0:pctGoal}%"></span></div>
+      <p class="st-sub"><span>${fmt(left)} to the next milestone</span><span>${kfmt(G)}</span></p>
     </div>
     <div class="vote-row rise" style="--d:5">
       <button class="vbtn y ${mine==="yes"?"picked":""}" data-vote="${PETITION.market}" data-side="yes"><span class="lab"><span class="dot y"></span>${mine==="yes"? (counted?"You've signed":"Confirm to sign") : "Yes, strip them"}</span><small>${mine==="yes"? (counted?"Now get one friend to sign":"Picked. Not counted until you confirm your email.") : "Sign the petition · free, 30 seconds"}</small></button>
       <button class="vbtn n ${mine==="no"?"picked":""}" data-vote="${PETITION.market}" data-side="no"><span class="lab"><span class="dot n"></span>${mine==="no"? (counted?"You counter-signed":"Confirm to counter-sign") : "No, keep them"}</span><small>${mine? `${fmt(t.no)} have counter-signed` : "Sign the counter-petition"}</small></button>
     </div>
-    <div class="trust rise" style="--d:6"><span>One per verified email</span><span>Switch sides any time</span><span>Nothing to buy</span><span>We deliver counts, never names</span></div>
+    <div class="trust rise" style="--d:6"><span>One per verified email</span><span>Switch sides any time</span><span>We deliver counts, never names</span></div>
+  </section>
+
+  <section class="brief" aria-labelledby="wh">
+    <div>
+      <h2 id="wh">What happened</h2>
+      <p>In February 2023 the Premier League referred Manchester City to an Independent Commission over alleged breaches of its rules: the 115 charges.</p>
+      <p>On 29 September 2026 the Commission published its decision. The sanctions, meaning what actually happens to City, have not been decided yet.</p>
+      <p class="srcline">Sources: <a href="${SOURCES.referral.u}" target="_blank" rel="noopener">Premier League referral, 6 Feb 2023 ↗</a> · <a href="${SOURCES.decision.u}" target="_blank" rel="noopener">Commission decision, 29 Sep 2026 ↗</a> · <a href="${SOURCES.plStatement.u}" target="_blank" rel="noopener">Premier League statement ↗</a></p>
+      <p class="deliv">First delivery to the Board of the Premier League on ${esc(PETITION.firstDeliveryLabel)}, with the counter-petition total alongside it.</p>
+      <p>Signing stays open after that. The final count goes in when the sanctions hearing is set.</p>
+      <p class="indep"><strong>Independent fan project.</strong> Not affiliated with, endorsed by or connected to the Premier League or Manchester City FC.</p>
+    </div>
   </section>
 
   <section aria-labelledby="lt">
-    <div class="sec-head"><div><div class="eyebrow">Read it before you sign</div><h2 id="lt">The letter</h2></div></div>
+    <div class="sec-head"><div><h2 id="lt">The letter</h2></div></div>
     <div class="docs">
       <div>
         <article class="paper">
-          <div class="to"><span>${esc(PETITION.to)}</span><span>Sent ${esc(PETITION.deliverWhen)}</span></div>
+          <div class="to"><span>${esc(PETITION.to)}</span><span>First delivery ${esc(PETITION.firstDeliveryLabel)}</span></div>
           <div class="letter">${PETITION.body.map(x=>`<p>${esc(x)}</p>`).join("")}</div>
           <div class="sig"><span class="who">Signed, <b>${fmt(t.yes)}</b> fans</span><span class="filed">Open for signatures</span></div>
         </article>
@@ -1277,11 +1346,12 @@ async function renderPetition(v){
   </section>
 
   <section aria-labelledby="ob">
-    <div class="sec-head"><div><div class="eyebrow">${MARKETS.length-1} more open questions</div><h2 id="ob">On the board</h2></div><a class="btn" href="#markets" data-go="markets">See every market →</a></div>
+    <div class="sec-head"><div><h2 id="ob">On the board</h2></div><a class="btn" href="#markets" data-go="markets">See all ${MARKETS.length-1} questions →</a></div>
     <div class="grid three">${teaser.map(cardHTML).join("")}</div>
   </section>
 
   ${newsletterBand()}`;
+  v.innerHTML = body;
   bindVotes(v); bindShare(v); bindNewsletter(v);
   if(anim){
     const el=$("#petCount",v), bar=$("#petBar",v), to=t.yes, D=1500; let t0=null;
@@ -1290,10 +1360,17 @@ async function renderPetition(v){
       requestAnimationFrame(step); }, 420);
   }
   for(const m of teaser){ if(!unlocked(m)) continue; const el=v.querySelector(`[data-spark="${m.id}"]`); if(el) el.innerHTML=sparkSVG(await hist(m.id)); }
+  fillMomentum(v);
   const rs=await api.recentSigners();
   $("#feed").innerHTML = rs.length? rs.slice(0,8).map(r=>`<li><span><strong>${esc(r.first_name)}</strong> · ${esc(r.country||"")}${r.club?` · <span class="fine">${esc(r.club)}</span>`:""}</span><span class="when">${ago(r.signed_at)}</span></li>`).join("") : `<li class="empty">Be the first name on the list.</li>`;
 }
 
+/* Momentum: only shown once the last 24 hours bring in MOMENTUM.minToday+ signatures. */
+async function fillMomentum(v){
+  const el=$("#moToday",v); if(!el || !api.momentum) return;
+  const m=await api.momentum(); if(!m || m.today<MOMENTUM.minToday){ el.hidden=true; return; }
+  el.textContent=`+${fmt(m.today)} in 24 hrs`; el.hidden=false;
+}
 async function copy(text){ try{ await navigator.clipboard.writeText(text); toast("Link copied."); }catch(e){ const r=$("#modalRoot"); r.innerHTML=`<div class="scrim" data-close><div class="modal" role="dialog" aria-modal="true" aria-label="Copy link"><h2>Copy link</h2><input id="cpy" readonly value="${esc(text)}" style="border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--bg)"><button class="btn" data-x>Done</button></div></div>`; const i=$("#cpy"); i.focus(); i.select(); bindClose(); } }
 
 async function renderMe(v){
@@ -1324,6 +1401,7 @@ async function renderMe(v){
       </section>
       <section class="panel"><h2>Emails</h2>
         <div class="toggle"><label for="nlT"><strong>The Pepstein Files newsletter</strong><br><span class="fine">Short explainers when new files drop, plus members-only splits.</span></label><input type="checkbox" class="sw" id="nlT" ${u.newsletter?"checked":""}></div>
+        <div class="toggle"><label for="puT"><strong>Petition updates</strong><br><span class="fine">When the petition is delivered, and what the league says back.</span></label><input type="checkbox" class="sw" id="puT" ${u.petition_updates?"checked":""}></div>
         <div class="toggle"><label for="feedT"><strong>List me as a petition signer</strong><br><span class="fine">First name, last initial, country and club in the recent signers list.</span></label><input type="checkbox" class="sw" id="feedT" ${u.show_in_feed?"checked":""}></div>
         <div class="toggle"><span><strong>Market alerts</strong><br><span class="fine">For markets you voted on: settled, big swings, related documents. Mute any market below.</span></span></div>
       </section>
@@ -1345,7 +1423,7 @@ async function renderMe(v){
       </section>
       ${FAN_QUESTIONS.length?`<section class="panel"><h2>Fan profile</h2>
         <p class="fine" style="margin:0 0 6px">Optional. Used only in aggregate, for splits like “fans who've been going 15+ years”.</p>
-        <div class="tbl"><table class="list"><tbody>${FAN_QUESTIONS.map(q=>`<tr><td>${esc(q.q)}</td><td style="white-space:nowrap">${fan[q.id]? esc(fan[q.id]) : `<button class="btn" style="padding:5px 10px;font-size:13px" data-askq="${q.id}">Answer</button>`}</td></tr>`).join("")}</tbody></table></div>
+        <div class="tbl"><table class="list"><tbody>${FAN_QUESTIONS.map(q=>`<tr><td>${esc(q.q)}</td><td style="${q.type==="text"?"":"white-space:nowrap"}">${fan[q.id]? esc(fan[q.id])+(q.type==="text"?`<br><span class="fine">${fan.why_quote?"OK to quote":"Not for quoting"}</span>`:"") : `<button class="btn" style="padding:5px 10px;font-size:13px" data-askq="${q.id}">Answer</button>`}</td></tr>`).join("")}</tbody></table></div>
         ${Object.values(fan).some(Boolean)?`<button class="btn" id="clearFan" style="margin-top:10px">Clear my answers</button>`:""}
       </section>`:""}
       <section class="panel"><h2>Your suggestions</h2>
@@ -1355,11 +1433,12 @@ async function renderMe(v){
     </div>
   </div>`;
   $("#nlT").addEventListener("change",async e=>{ S.user=await api.setNewsletter(e.target.checked); toast(e.target.checked?"Subscribed to The Pepstein Files.":"Unsubscribed from the newsletter."); });
+  $("#puT").addEventListener("change",async e=>{ S.user=await api.setPetitionUpdates(e.target.checked); toast(e.target.checked?"You'll get petition updates.":"Petition updates off."); });
   $("#feedT").addEventListener("change",async e=>{ S.user=await api.saveProfile({show_in_feed:e.target.checked}); toast(e.target.checked?"You'll appear in recent signers.":"Removed from recent signers."); });
   v.querySelectorAll("[data-mute]").forEach(i=>i.addEventListener("change",async()=>{ await api.setMute(i.dataset.mute,!i.checked); toast(i.checked?"Alerts on.":"Alerts muted."); }));
   $("#editP").addEventListener("click",()=>openProfile(null,true));
   v.querySelectorAll("[data-askq]").forEach(b=>b.addEventListener("click",()=>askQuestion(FAN_QUESTIONS.find(q=>q.id===b.dataset.askq),true)));
-  $("#clearFan")?.addEventListener("click",async()=>{ S.user=await api.saveProfile({fan:Object.fromEntries(FAN_QUESTIONS.map(q=>[q.id,""]))}); toast("Fan-profile answers cleared."); App.route(); });
+  $("#clearFan")?.addEventListener("click",async()=>{ S.user=await api.saveProfile({fan:{...Object.fromEntries(FAN_QUESTIONS.map(q=>[q.id,""])),why_quote:false}}); toast("Fan-profile answers cleared."); App.route(); });
   $("#out").addEventListener("click",async()=>{ await api.signOut(); S.user=null; S.votes={}; App.syncAcct(); toast("Signed out."); go("markets"); });
 }
 
@@ -1469,22 +1548,35 @@ async function finishSuggest(){
 /* ------------------------------------------------------------
    Fan profile: one optional question at a time
    ------------------------------------------------------------ */
-function nextQuestion(){ if(!S.user) return null; const a=S.user.fan||{}; return FAN_QUESTIONS.find(q=>!(q.id in a))||null; }
+function nextQuestion(){ if(!S.user) return null; const a=S.user.fan||{}; return FAN_QUESTIONS.find(q=>!(q.id in a) && (!q.petition || S.votes[PETITION.market]))||null; }
+function qText(q){ return q.qNo && S.votes[PETITION.market]==="no" ? q.qNo : q.q; }
 function questionBlock(q){
+  if(q.type==="text") return `<div class="qblock" style="display:grid;gap:10px"><div class="eyebrow">Quick one · optional</div>
+    <div class="field"><label for="qTxt" style="font-size:15px;color:var(--ink)">${esc(qText(q))}</label>
+      <textarea id="qTxt" maxlength="${q.max}" rows="3" placeholder="One line is plenty."></textarea><span class="count-hint" id="qCnt">0/${q.max}</span></div>
+    <label class="check"><input type="checkbox" id="qOk"><span>OK to quote this with my first name and club. We read every one before using it.</span></label>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button type="button" class="btn solid" data-save>Save</button><button type="button" data-skip class="fine" style="background:none;border:0;padding:0;text-decoration:underline">Skip</button></div></div>`;
   return `<div class="qblock" style="display:grid;gap:8px"><div class="eyebrow">Quick one · optional</div><strong style="color:var(--ink)">${esc(q.q)}</strong>
     <div class="opts">${q.opts.map(o=>`<button type="button" data-ans="${esc(o)}">${esc(o)}</button>`).join("")}</div>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button type="button" data-skip class="fine" style="background:none;border:0;padding:0;text-decoration:underline">Skip</button><span class="fine">Only shown in aggregate.</span></div></div>`;
 }
 function bindQuestion(root,q,done){
   const blk=root.querySelector(".qblock"); if(!blk) return;
-  const save=async val=>{ try{ S.user=await api.saveProfile({fan:{...(S.user.fan||{}),[q.id]:val}}); }catch(e){} blk.innerHTML = val? `<strong style="color:var(--ink)">Thanks. That's in.</strong><span class="fine">It'll show up in the splits once enough fans answer.</span>` : `<span class="fine">No problem. We won't ask that again.</span>`; done&&done(); };
+  const save=async (val,extra={})=>{ try{ S.user=await api.saveProfile({fan:{...(S.user.fan||{}),[q.id]:val,...extra}}); }catch(e){}
+    blk.innerHTML = val? `<strong style="color:var(--ink)">Thanks. That's in.</strong><span class="fine">${q.type==="text"?"It goes in the pack we send the league.":"It'll show up in the splits once enough fans answer."}</span>` : `<span class="fine">No problem. We won't ask that again.</span>`; done&&done(!!val); };
   blk.querySelectorAll("[data-ans]").forEach(b=>b.addEventListener("click",()=>save(b.dataset.ans)));
+  const ta=blk.querySelector("#qTxt");
+  if(ta){ const c=blk.querySelector("#qCnt"); ta.addEventListener("input",()=>c.textContent=`${ta.value.length}/${q.max}`);
+    blk.querySelector("[data-save]").addEventListener("click",()=>{ const val=ta.value.trim().replace(/\s+/g," ").slice(0,q.max); save(val,{why_quote: !!val && blk.querySelector("#qOk").checked}); }); }
   blk.querySelector("[data-skip]").addEventListener("click",()=>save(""));
 }
 function maybeNudge(){
   if(maybeNudge.shown) return; const q=nextQuestion(); if(!q) return; maybeNudge.shown=true;
-  setTimeout(()=>{ const r=$("#nudgeRoot"); r.innerHTML=`<div class="nudge" role="dialog" aria-label="Quick question"><button class="x" type="button" data-nx aria-label="Close">×</button>${questionBlock(q)}</div>`;
-    bindQuestion(r,q,()=>setTimeout(()=>r.innerHTML="",1600)); r.querySelector("[data-nx]").addEventListener("click",()=>r.innerHTML=""); },700);
+  setTimeout(()=>{ const r=$("#nudgeRoot");
+    const show=(q)=>{ r.innerHTML=`<div class="nudge" role="dialog" aria-label="Quick question"><button class="x" type="button" data-nx aria-label="Close">×</button>${questionBlock(q)}</div>`;
+      r.querySelector("[data-nx]").addEventListener("click",()=>r.innerHTML="");
+      bindQuestion(r,q,(answered)=>setTimeout(()=>{ const nx=answered&&nextQuestion(); if(nx) show(nx); else r.innerHTML=""; },answered?1100:1600)); };
+    show(q); },700);
 }
 function askQuestion(q){ if(!q) return;
   modal(`${questionBlock(q)}<button class="btn" data-x>Close</button>`);
@@ -1594,6 +1686,7 @@ function openEmail(pending,opts={}){
     <form id="emailForm" class="field" novalidate>
       <label for="em">Email</label>
       <input id="em" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required value="${esc(opts.email||"")}">
+      ${pending&&pending.id===PETITION.market?`<label class="check" style="margin-top:8px"><input type="checkbox" id="puOpt"><span>Email me when it's delivered and what the league says back.</span></label>`:""}
       <label class="check" style="margin-top:8px"><input type="checkbox" id="nlOpt" ${opts.newsletter?"checked":""}><span>Also send me <strong>The Pepstein Files</strong> newsletter: short explainers when new files drop.</span></label>
       <div id="capBox" style="margin-top:10px"></div>
       <div class="err" id="emErr"></div>
@@ -1605,7 +1698,7 @@ function openEmail(pending,opts={}){
     e.preventDefault(); const em=$("#em").value.trim(); const nl=$("#nlOpt").checked;
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)){ $("#emErr").textContent="Enter a full email address, like name@example.com."; return; }
     if(api.mode==="live" && !Captcha.token){ $("#emErr").textContent="Just checking you're human. Give it a second, then tap again."; return; }
-    store.set("pf_nl_intent",nl);
+    store.set("pf_nl_intent",nl); store.set("pf_pu_intent",!!$("#puOpt")?.checked);
     const btn=e.target.querySelector("button[type=submit]"); btn.disabled=true;
     const r=await api.requestLink(em, Captcha.token); btn.disabled=false;
     if(!r.ok){ Captcha.reset(); $("#emErr").textContent = /captcha/i.test(r.error||"") ? "The human check failed. Try again." : (r.error || "Couldn't send the code. Try again in a minute."); return; }
@@ -1676,7 +1769,7 @@ function doneModal(m,side){
   const mine = isPet ? (side==="yes"? t.yes : t.no) : tot(t);
   const G0 = goalFor(Math.max(0,mine-1)), crossed = isPet && side==="yes" && mine>=G0;
   const art = CELEBRATE.img ? `<img class="cel-img" src="${esc(CELEBRATE.img)}" alt="${esc(CELEBRATE.alt)}">` : `<div class="cel-stamp">${crossed? kfmt(G0)+"!" : isPet? (side==="yes"?"Signed":"Counter-signed") : "Counted"}</div>`;
-  const nl = !S.user.newsletter;
+  const nl = !S.user.newsletter; const pu = isPet && !S.user.petition_updates;
   modal(`
     <div class="cel">${art}</div>
     <div class="eyebrow">${isPet? "It counts" : "Vote counted"}</div>
@@ -1687,8 +1780,11 @@ function doneModal(m,side){
       : `<p><strong style="color:var(--ink)">${agree}%</strong> of ${fmt(tot(t))} voters agree with you. You can change your vote any time.</p>`}
     <div style="display:grid;gap:8px"><strong style="color:var(--ink)">${isPet&&side==="yes"? "Every signature you bring is one closer. Send it to one mate." : "Send it to someone who'd disagree."}</strong>${shareButtons()}</div>
     ${!hasProfile(S.user)? `<button class="btn" type="button" id="addClub">See how your club voted</button>` : ""}
-    ${nl? `<button type="button" id="nlYes" class="fine" style="background:none;border:0;padding:0;text-decoration:underline;justify-self:center">Email me when new files drop</button>` : ""}
-    <button class="btn" data-x>Done</button>`);
+    ${pu? `<button type="button" id="puYes" class="fine" style="background:none;border:0;padding:0;text-decoration:underline;justify-self:center">Email me when it's delivered</button>`
+      : nl? `<button type="button" id="nlYes" class="fine" style="background:none;border:0;padding:0;text-decoration:underline;justify-self:center">Email me when new files drop</button>` : ""}
+    <button class="btn" data-x id="doneBtn">Done</button>`);
+  $("#doneBtn")?.addEventListener("click",()=>maybeNudge());
+  $("#puYes")?.addEventListener("click",async e=>{ S.user=await api.setPetitionUpdates(true); Track.capture("petition_updates_on"); e.target.outerHTML=`<span class="fine" style="justify-self:center">We'll email you when it's delivered.</span>`; });
   bindShare($("#modalRoot"));
   // the number ticks over to theirs
   const n=$("#celN"); if(n){ setTimeout(()=>{ n.textContent=fmt(mine); n.classList.add("tick"); const b=$("#celBar"); if(b) b.style.width=Math.min(100,mine/G0*100)+"%"; },700); }
