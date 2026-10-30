@@ -496,6 +496,39 @@ body:has(.consent) .confirm-bar{bottom:calc(150px + env(safe-area-inset-bottom,0
 footer button.linkish{background:none;border:0;padding:0;color:inherit;text-decoration:underline;font:inherit;cursor:pointer}
 @media (max-width:520px){ .consent{left:0;right:0;bottom:0;width:100%;border-radius:16px 16px 0 0;border-bottom:0;padding:14px 16px calc(14px + env(safe-area-inset-bottom,0px))} body:has(.consent) .confirm-bar{bottom:calc(140px + env(safe-area-inset-bottom,0px))} }
 
+
+/* v4.6 critique pass */
+::selection{background:var(--mark);color:var(--mark-ink)}
+/* the petition's two sides: equal weight, both the loudest thing on the page */
+.lp .vote-row .vbtn.y:not(.picked),.lp .vote-row .vbtn.y:not(.picked):hover{background:var(--yes);border-color:var(--yes);color:var(--yes-ink)}
+.lp .vote-row .vbtn.n:not(.picked),.lp .vote-row .vbtn.n:not(.picked):hover{background:var(--no);border-color:var(--no);color:var(--no-ink)}
+.lp .vote-row .vbtn{box-shadow:0 1px 2px rgb(0 0 0/.10),0 10px 22px -12px rgb(0 0 0/.45);transition:box-shadow .2s var(--ease),transform .08s,background .15s}
+.lp .vote-row .vbtn:not(.picked) small{color:inherit;opacity:.85}
+.lp .vote-row .vbtn:not(.picked) .dot{background:currentColor}
+.lp .vote-row .vbtn:not(.picked):hover{box-shadow:0 2px 4px rgb(0 0 0/.12),0 16px 30px -14px rgb(0 0 0/.55)}
+.lp .vote-row .vbtn:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+/* once you've picked, the other side steps back */
+.lp .vote-row:has(.picked) .vbtn:not(.picked),.lp .vote-row:has(.picked) .vbtn:not(.picked):hover{background:var(--surface-2);border-color:var(--line);color:var(--ink);box-shadow:none}
+.lp .vote-row:has(.picked) .vbtn:not(.picked) small{color:var(--muted);opacity:1}
+.lp .vote-row:has(.picked) .vbtn.y:not(.picked) .dot{background:var(--yes)}
+.lp .vote-row:has(.picked) .vbtn.n:not(.picked) .dot{background:var(--no)}
+/* how we count: statement and reason side by side on wide screens */
+@media (min-width:861px){
+  .rule{grid-template-columns:auto minmax(0,1fr);align-items:end;column-gap:clamp(28px,4vw,56px)}
+  .rule p{padding-bottom:.3em}
+}
+/* small fixes */
+.paper .to{color:#625e55}
+.demo-bar .wrap{padding-block:8px}
+.strip .wrap{padding-block:9px}
+.plates-cap a,footer p a{padding-block:.45em}
+.lp h1 .ast{font-size:inherit;display:inline-block;width:.34em;height:.34em;vertical-align:top;margin:.02em .03em 0 .01em}
+.lp h1 .ast svg{display:block;width:100%;height:100%}
+.is-offline .strip{display:none}
+/* vote server unreachable */
+.offline{max-width:560px;margin:clamp(48px,12vh,120px) auto;padding:0 20px;text-align:center;display:grid;gap:16px;justify-items:center}
+.offline h1{font-family:var(--f-display);font-weight:900;text-transform:uppercase;font-size:clamp(36px,7vw,64px);line-height:.9;margin:0}
+.offline p{margin:0;color:var(--muted);font-size:16px;max-width:46ch}
 </style>
 </head>
 <body>
@@ -878,10 +911,23 @@ let api = Demo;
 const S = { user:null, tallies:{}, votes:{}, picks:store.get("pf_picks",{}), filter:"all", hist:{} };
 
 const App = {
+  offline(){
+    document.body.classList.add("is-offline");
+    $("#view").innerHTML=`<section class="offline" role="alert"><h1>Can\u2019t reach the vote server</h1><p>Signing and counts are paused so nothing gets recorded by mistake. It\u2019s usually a slow or filtered connection. Try again in a minute, or switch from Wi\u2011Fi to mobile data.</p><button class="btn solid" type="button" id="offlineRetry">Try again</button></section>`;
+    $("#offlineRetry").addEventListener("click",()=>location.reload());
+  },
   async start(){
     if(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY){
       try{ await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"); api=Live; }
-      catch(e){ console.warn("Supabase failed to load, falling back to demo", e); }
+      catch(e){
+        try{ await loadScript("https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"); api=Live; }
+        catch(e2){
+          console.warn("Supabase failed to load", e2);
+          // on the real site, never fall back to simulated counts and pretend sign-in
+          const real=[new URL(CONFIG.SITE_URL).hostname,"www."+new URL(CONFIG.SITE_URL).hostname,"pepsteinfiles.github.io"];
+          if(real.includes(location.hostname)) return this.offline();
+        }
+      }
     }
     $("#demoBar").hidden = api.mode!=="demo";
     Referral.capture();
@@ -915,7 +961,7 @@ const App = {
   syncStrip(){ const t=S.tallies[PETITION.market]||{yes:0,no:0};
     $("#stripCount").textContent=fmt(t.yes); $("#stripBar").style.width=Math.min(100,t.yes/goalFor(t.yes)*100)+"%";
     const mine=S.votes[PETITION.market]; const b=$("#stripSign"); b.textContent= mine==="yes"?"Signed ✓":"Sign"; },
-  syncAcct(){ this.syncStrip(); const a=$("#acctLink"); a.textContent = S.user ? (S.user.first_name ? S.user.first_name : "Account") : "Sign in"; a.classList.toggle("solid", !S.user); },
+  syncAcct(){ this.syncStrip(); const a=$("#acctLink"); a.textContent = S.user ? (S.user.first_name ? S.user.first_name : "Account") : "Sign in"; a.classList.remove("solid"); },
   async onSignedIn(silent){
     S.user = api.session();
     if(!S.user) return;
@@ -1075,9 +1121,9 @@ function cardHTML(m){
     <h3><a href="#${m.id}" data-go="${m.id}">${esc(m.q)}</a></h3>
     ${lockWrap(m, `<div style="display:grid;gap:12px">
       <div class="row"><div class="pct">${p}%<small>yes</small></div><span data-spark="${m.id}">${sparkSVG(open?null:fakeSeries(m.id))}</span></div>
-      <div class="bar"><span style="width:${p}%"></span></div></div>`, {label:"Sealed"})}
+      <div class="bar"><span style="width:${p}%"></span></div></div>`, {label:"Sealed · pick a side"})}
     ${miniVote(m)}
-    <div class="foot"><span><span class="num">${fmt(tot(t))}</span> votes</span><span>${m.kind==="will"? (m.closes?"Closes "+esc(m.closes):"Settles on ruling") : "Never settles"}</span></div>
+    <div class="foot"><span><span class="num">${fmt(tot(t))}</span> votes</span><span>${m.kind==="will"? (m.closes?"Closes "+esc(m.closes):"Closes at the ruling") : "Stays open"}</span></div>
     ${creditLine(m)}
   </article>`;
 }
@@ -1183,7 +1229,7 @@ async function renderPetition(v){
   v.innerHTML = `
   <section class="lp" aria-labelledby="pt">
     <div class="kicker rise"><span class="tape">${esc(PETITION.name)}</span><span>Premier League v Manchester City · Decision published 29 Sep 2026 · Sanctions pending</span></div>
-    <h1 id="pt" class="rise" style="--d:1">${esc(byId[PETITION.market].q)}</h1>
+    <h1 id="pt" class="rise" style="--d:1">${esc(byId[PETITION.market].q).replace(/titles(?=\?)/i, w=>w+'<span class="ast" aria-hidden="true"><svg viewBox="0 0 100 100"><g fill="currentColor"><rect x="41" y="2" width="18" height="96" rx="2"/><rect x="41" y="2" width="18" height="96" rx="2" transform="rotate(60 50 50)"/><rect x="41" y="2" width="18" height="96" rx="2" transform="rotate(120 50 50)"/></g></svg></span>')}</h1>
     <p class="ask rise" style="--d:2">The ask: <b>${esc(PETITION.ask)}</b></p>
     <div class="rise" style="--d:3;display:grid;gap:12px;justify-items:center">
       <div class="plates">${RECORD.titles.map(y=>`<div class="plate"><span class="yr">${esc(y)}</span><span class="lbl">League champions</span><span class="star" aria-hidden="true">*</span></div>`).join("")}</div>
@@ -1193,7 +1239,6 @@ async function renderPetition(v){
       <div class="tally-top"><div class="big" id="petCount">${fmt(anim?0:t.yes)}</div><div class="of"><b>signatures</b><br>Next milestone ${fmt(G)}<span class="sep"> · </span><span class="left">${fmt(left)} to go</span></div></div>
       <div class="goal" role="progressbar" aria-valuemin="0" aria-valuemax="${G}" aria-valuenow="${t.yes}" aria-label="Signatures toward the next milestone"><span id="petBar" style="width:${anim?0:pctGoal}%"></span>${[20,40,60,80].map(x=>`<i style="left:${x}%"></i>`).join("")}</div>
       <div class="ticks" aria-hidden="true">${[0,1,2,3,4,5].map(i=>`<span>${tick(i*k)}</span>`).join("")}</div>
-      <div class="miles" aria-label="Milestones">${MILESTONES.filter(m=>m<=Math.max(G,1000)).slice(0,8).map(m=>`<span class="${m<=hit?"done":m===G?"next":""}">${m<=hit?"✓ ":""}${kfmt(m)}</span>`).join("")}</div>
     </div>
     <div class="vote-row rise" style="--d:5">
       <button class="vbtn y ${mine==="yes"?"picked":""}" data-vote="${PETITION.market}" data-side="yes"><span class="lab"><span class="dot y"></span>${mine==="yes"? (counted?"You've signed":"Confirm to sign") : "Yes, strip them"}</span><small>${mine==="yes"? (counted?"Now get one friend to sign":"Picked. Not counted until you confirm your email.") : "Sign the petition · free, 30 seconds"}</small></button>
